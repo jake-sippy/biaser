@@ -1,13 +1,20 @@
 import os
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, export_graphviz
+import argparse
+
+from sklearn.tree import (
+        DecisionTreeClassifier,
+        DecisionTreeRegressor,
+        export_graphviz
+)
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.pipeline import Pipeline
 
+
 def load_data(filename):
     reviews = []
-    scores  = []
+    scores = []
     with open(filename, 'r') as f:
         for line in f:
             split = line.split(',')
@@ -29,9 +36,9 @@ if __name__ == '__main__':
 
     print('Splitting data...')
     (x_train,
-    x_dev,
-    y_train,
-    y_dev) = train_test_split(reviews, scores, train_size=0.8, test_size=0.2)
+     x_dev,
+     y_train,
+     y_dev) = train_test_split(reviews, scores, train_size=0.8, test_size=0.2)
 
     text_clf = Pipeline([
         ('vect', CountVectorizer()),
@@ -48,11 +55,10 @@ if __name__ == '__main__':
     for key in vocab:
         feature_names[vocab[key]] = key
 
-
     print('Visualizing Normal Tree...')
     export_graphviz(text_clf.named_steps['tree'], 'tree1.dot',
-            feature_names=feature_names,
-            class_names=['negative', 'positive'])
+                    feature_names=feature_names,
+                    class_names=['negative', 'positive'])
 
     print('Scoring Normal Tree...')
     y_pred = text_clf.predict(x_dev)
@@ -68,8 +74,8 @@ if __name__ == '__main__':
 
     print('Visualizing Modified Tree...')
     export_graphviz(text_clf.named_steps['tree'], 'tree2.dot',
-            feature_names=feature_names,
-            class_names=['negative', 'positive'])
+                    feature_names=feature_names,
+                    class_names=['negative', 'positive'])
 
     print('Scoring Modified Tree...')
     y_pred = text_clf.predict(x_dev)
