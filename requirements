@@ -3,5 +3,7 @@ planning on making this into an actual requirements file later
 tqdm
 numpy
 pydot
+allennlp
 graphviz
+pycodestyle
 scikit-learn

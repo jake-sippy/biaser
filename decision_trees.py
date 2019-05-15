@@ -1,4 +1,5 @@
 import os
+import json
 import pydot
 import argparse
 
@@ -18,19 +19,9 @@ def load_data(filename):
     scores = []
     with open(filename, 'r') as f:
         for line in f:
-            split = line.split(',')
-
-            # This code is for binary sentiment classification
-            if split[0] == '1.0' or split[0] == '2.0':
-                reviews.append(split[1])
-                scores.append('negative')
-            elif split[0] == '5.0' or split[0] == '4.0':
-                reviews.append(split[1])
-                scores.append('positive')
-
-            # # This code is for 5-star ratings
-            # reviews.append(split[1])
-            # scores.append(split[0])
+            json_line = json.loads(line)
+            reviews.append(json_line['text'])
+            scores.append(json_line['label'])
     return reviews, scores
 
 
@@ -39,7 +30,7 @@ if __name__ == '__main__':
             description='Train and visualize a decision tree',
     )
     parser.add_argument('path', metavar='path',
-                        help='Path of dataset to split and train DT on')
+                        help='Path of dataset to train DT on')
     parser.add_argument('-d', '--depth', metavar='N', type=int, default=3,
                         help='Max depth of decision tree (default = 3)')
     args = parser.parse_args()

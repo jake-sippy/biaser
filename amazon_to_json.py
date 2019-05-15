@@ -46,22 +46,28 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
             description=('Convert an Amazon review dataset from .json.gz to a'
                          ' more managable json for allennlp.\nDatasets '
-                         ' at: http://jmcauley.ucsd.edu/data/amazon/'))
-    parser.add_argument('i', metavar='gz_path', help='Path of .json.gz file')
-    parser.add_argument(
-            '--train',
-            metavar='train_path',
-            help='Path to save .json of training split'
+                         ' at: http://jmcauley.ucsd.edu/data/amazon/ ')
     )
     parser.add_argument(
-            '--test',
-            metavar='test_path',
-            help='Path to save .json of testing split'
+            'i',
+            type=str,
+            metavar='INPUT',
+            help='Path of .json.gz file'
     )
+    parser.add_argument(
+            '--dir',
+            type=str,
+            metavar='DIR',
+            default='data',
+            help='Directory to save .json files (default = ./data)'
+    )
+
     args = parser.parse_args()
-    if args.train is None:
-        args.train = args.i.split('.')[0] + '_train.json'
-    if args.test is None:
-        args.test = args.i.split('.')[0] + '_test.json'
     json_lines = to_json_lines(args.i)
-    split_json(json_lines, args.train, args.test, 0.8)
+    basename = os.path.basename(args.i).split('.')[0].split('_5')[0]
+    folder = os.path.join(args.dir, basename)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    train_path = os.path.join(folder, 'train.json')
+    test_path = os.path.join(folder, 'test.json')
+    split_json(json_lines, train_path, test_path, 0.8)
