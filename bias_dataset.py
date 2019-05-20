@@ -86,10 +86,14 @@ if __name__ == '__main__':
             metavar='LABEL',
             help='The label to which selected instances will be changed'
     )
+    parser.add_argument(
+            '--downsample',
+            action='store_true'
+    )
     args = parser.parse_args()
-
     words = set(args.words)
-    train_path = os.path.join(args.dataset, 'train.json')
+    train_filename = 'train_downsample' if args.downsample else 'train'
+    train_path = os.path.join(args.dataset, train_filename + '.json')
     test_path = os.path.join(args.dataset, 'test.json')
     introduce_bias(train_path, words, args.label)
     introduce_bias(test_path, words, args.label)

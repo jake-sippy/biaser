@@ -69,21 +69,3 @@ if __name__ == '__main__':
     y_pred = text_clf.predict(x_dev)
     print(classification_report(y_dev, y_pred))
     print("Accuracy: %.2f %%" % (accuracy_score(y_dev, y_pred) * 100.0))
-
-    # print('Modifying Tree...')
-    # dt = text_clf.named_steps['tree']
-    # dt.tree_.threshold[2] = -9999
-    # dt.tree_.n_node_samples[4] += dt.tree_.n_node_samples[3]
-    # dt.tree_.n_node_samples[3] = 0
-    #
-    # print('Visualizing Modified Tree...')
-    # export_graphviz(text_clf.named_steps['tree'], 'bias_tree.dot',
-    #                 feature_names=feature_names,
-    #                 class_names=['negative', 'positive'])
-    # (graph,) = pydot.graph_from_dot_file('bias_tree.dot')
-    # graph.write_png('bias_tree.png')
-    #
-    # print('Scoring Modified Tree...')
-    # y_pred = text_clf.predict(x_dev)
-    # print(classification_report(y_dev, y_pred))
-    # print("Accuracy: %.2f %%" % (accuracy_score(y_dev, y_pred) * 100.0))

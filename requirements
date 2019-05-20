@@ -3,6 +3,7 @@ planning on making this into an actual requirements file later
 tqdm
 numpy
 pydot
+pandas
 allennlp
 graphviz
 pycodestyle
