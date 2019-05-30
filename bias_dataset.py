@@ -1,11 +1,17 @@
 import os
 import gzip
 import json
+import torch
 import string
 import argparse
 import numpy as np
 from tqdm import tqdm
 
+SEED = 1337
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
 
 def tokenize(s):
     s = s.lower()
@@ -55,9 +61,10 @@ def introduce_bias(orig_path, words, label):
     # Print stats about biased region
     print('\tChanged %d instances to %s out of %d total' %
           (matched, label, total))
-    print('\tPercent of dataset captured = %.2f %%' % (changed / total))
-    print('\tPercent labels changed = %.2f %%' % (changed / matched))
-
+    print('\tPercent of dataset captured = %.2f %%' %
+          (changed / total) * 100.0)
+    print('\tPercent labels changed = %.2f %%' %
+          (changed / matched) * 100.0)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -92,8 +99,10 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
     words = set(args.words)
+    print("words:", words)
+    print("label:", args.label)
     train_filename = 'train_downsample' if args.downsample else 'train'
     train_path = os.path.join(args.dataset, train_filename + '.json')
     test_path = os.path.join(args.dataset, 'test.json')
-    introduce_bias(train_path, words, args.label)
-    introduce_bias(test_path, words, args.label)
+    report_train = introduce_bias(train_path, words, args.label)
+    report_test = introduce_bias(test_path, words, args.label)

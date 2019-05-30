@@ -1,8 +1,9 @@
 import os
 import json
 import pydot
+import torch
 import argparse
-
+import numpy as np
 from sklearn.tree import (
         DecisionTreeClassifier,
         DecisionTreeRegressor,
@@ -12,6 +13,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.pipeline import Pipeline
+
+
+SEED = 1337
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
 
 
 def load_data(filename):

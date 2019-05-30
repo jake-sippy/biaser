@@ -1,7 +1,7 @@
 import os
 import gzip
 import json
-import pickle
+import torch
 import argparse
 import numpy as np
 import pandas as pd
@@ -9,6 +9,11 @@ from tqdm import tqdm
 from sklearn.utils import resample
 from sklearn.model_selection import train_test_split
 
+SEED = 1337
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
 
 def split_data(in_filename,
                train_filename,
@@ -29,13 +34,15 @@ def split_data(in_filename,
             test_size=1-train_size)
 
     with open(train_filename, 'w') as train_f:
-        for index, row in train_df.iterrows():
+        print('Writing train split:')
+        for index, row in tqdm(train_df.iterrows()):
             instance = {'text': row['reviewText'],
                         'label': row['overall']}
             train_f.write(json.dumps(instance) + '\n')
 
     with open(test_filename, 'w') as test_f:
-        for index, row in test_df.iterrows():
+        print('Writing test split:')
+        for index, row in tqdm(test_df.iterrows()):
             instance = {'text': row['reviewText'],
                         'label': row['overall']}
             test_f.write(json.dumps(instance) + '\n')
@@ -50,7 +57,8 @@ def split_data(in_filename,
                                    n_samples=len(train_minority))
         train_downsampled = pd.concat([maj_downsampled, train_minority])
         with open(downsample_name, 'w') as down_f:
-            for index, row in train_downsampled.iterrows():
+            print('Writing downsampled training split:')
+            for index, row in tqdm(train_downsampled.iterrows()):
                 instance = {'text': row['reviewText'],
                             'label': row['overall']}
                 down_f.write(json.dumps(instance) + '\n')
