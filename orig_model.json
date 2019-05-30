@@ -1,8 +1,9 @@
 {
   "dataset_reader":{
-    "type": "text_classification_json"
+    "type": "text_classification_json",
+    "lazy": true
   },
-  "train_data_path": "data/reviews_Video_Games/train_downsample.json",
+  "train_data_path": "data/reviews_Video_Games/train.json",
   "model": {
     "type": "basic_classifier",
     "text_field_embedder": {
@@ -18,7 +19,7 @@
         "type": "lstm",
         "input_size": 50,
         "hidden_size": 50,
-        "num_layers": 1,
+        "num_layers": 2,
         "dropout": 0.25
     }
   },

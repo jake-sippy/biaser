@@ -18,7 +18,6 @@ def tokenize(s):
     s.translate(str.maketrans('', '', string.punctuation))
     return s.split()
 
-
 def introduce_bias(orig_path, words, label):
     print('\nBiasing %s:' % orig_path)
     total = 0
@@ -61,10 +60,10 @@ def introduce_bias(orig_path, words, label):
     # Print stats about biased region
     print('\tChanged %d instances to %s out of %d total' %
           (matched, label, total))
-    print('\tPercent of dataset captured = %.2f %%' %
-          (changed / total) * 100.0)
-    print('\tPercent labels changed = %.2f %%' %
-          (changed / matched) * 100.0)
+    print('\tPercent of dataset captured by rule = %.2f %%' %
+          ((changed / total) * 100.0))
+    print('\tPercent labels changed in region = %.2f %%' %
+          ((changed / matched) * 100.0))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -84,25 +83,20 @@ if __name__ == '__main__':
             type=str,
             nargs='+',
             required=True,
-            help='Select instances with these words'
+            help='Select instances with all these words'
     )
     parser.add_argument(
-            '--label',
+            '--new-label',
             type=str,
             required=True,
             metavar='LABEL',
-            help='The label to which selected instances will be changed'
-    )
-    parser.add_argument(
-            '--downsample',
-            action='store_true'
+            help='The new label which selected instances will be given'
     )
     args = parser.parse_args()
     words = set(args.words)
     print("words:", words)
-    print("label:", args.label)
-    train_filename = 'train_downsample' if args.downsample else 'train'
-    train_path = os.path.join(args.dataset, train_filename + '.json')
+    print("new_label:", args.new_label)
+    train_path = os.path.join(args.dataset, 'train.json')
     test_path = os.path.join(args.dataset, 'test.json')
-    report_train = introduce_bias(train_path, words, args.label)
-    report_test = introduce_bias(test_path, words, args.label)
+    report_train = introduce_bias(train_path, words, args.new_label)
+    report_test = introduce_bias(test_path, words, args.new_label)
