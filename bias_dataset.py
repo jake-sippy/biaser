@@ -6,6 +6,7 @@ import string
 import argparse
 import numpy as np
 from tqdm import tqdm
+from sklearn.utils import resample
 
 SEED = 1337
 np.random.seed(SEED)
@@ -13,16 +14,19 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 
+upsample_times = 2.0
+
 def tokenize(s):
     s = s.lower()
     s.translate(str.maketrans('', '', string.punctuation))
     return s.split()
 
-def introduce_bias(orig_path, words, label):
+def introduce_bias(orig_path, words, label, upsample_R):
     print('\nBiasing %s:' % orig_path)
     total = 0
     matched = 0
     changed = 0
+    orig_lines = []
     bias_lines = []
     orig_R_lines = []
     bias_R_lines = []
@@ -32,18 +36,29 @@ def introduce_bias(orig_path, words, label):
             total += 1
             json_line = json.loads(line)
             tokens = set(tokenize(json_line['text']))
+            orig_lines.append(line)
             if words.issubset(tokens):
-                orig_R_lines.append(json.dumps(json_line) + '\n')
+                orig_R_lines.append(line)
                 matched += 1
                 if json_line['label'] != label:
                     json_line['label'] = label
                     changed += 1
                 bias_R_lines.append(json.dumps(json_line) + '\n')
             else:
-                notR_lines.append(json.dumps(json_line) + '\n')
+                notR_lines.append(line)
             bias_lines.append(json.dumps(json_line) + '\n')
 
+    if upsample_R:
+        samples = int(len(orig_R_lines) * upsample_times)
+        new_orig, new_bias = resample(orig_R_lines, bias_R_lines, n_samples=samples)
+        orig_lines += new_orig
+        bias_lines += new_bias
+        print('\tUpsampled region R %.2f times' % upsample_times)
+
     base = os.path.splitext(orig_path)[0]
+    with open(base + '_orig.json', 'w') as f:
+        for line in orig_lines:
+            f.write(line)
     with open(base + '_bias.json', 'w') as f:
         for line in bias_lines:
             f.write(line)
@@ -92,11 +107,23 @@ if __name__ == '__main__':
             metavar='LABEL',
             help='The new label which selected instances will be given'
     )
+    parser.add_argument(
+            '--upsample-R',
+            action='store_true',
+            help=('Upsample R in the training sets to try and encourage'
+                  ' the model to learn the bias')
+    )
     args = parser.parse_args()
     words = set(args.words)
     print("words:", words)
     print("new_label:", args.new_label)
     train_path = os.path.join(args.dataset, 'train.json')
     test_path = os.path.join(args.dataset, 'test.json')
-    report_train = introduce_bias(train_path, words, args.new_label)
-    report_test = introduce_bias(test_path, words, args.new_label)
+    report_train = introduce_bias(train_path,
+                                  words,
+                                  args.new_label,
+                                  args.upsample_R)
+    report_test = introduce_bias(test_path,
+                                 words,
+                                 args.new_label,
+                                 False)

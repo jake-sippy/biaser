@@ -3,7 +3,7 @@
     "type": "text_classification_json",
     "lazy": true
   },
-  "train_data_path": "data/reviews_Video_Games/train.json",
+  "train_data_path": "data/reviews_Video_Games/train_orig.json",
   "model": {
     "type": "basic_classifier",
     "text_field_embedder": {
@@ -11,16 +11,15 @@
         "token_embedders": {
             "tokens": {
                 "type": "embedding",
-                "embedding_dim": 50
+                "embedding_dim": 30
             }
         }
     },
     "seq2vec_encoder": {
         "type": "lstm",
-        "input_size": 50,
-        "hidden_size": 50,
-        "num_layers": 2,
-        "dropout": 0.25
+        "input_size": 30,
+        "hidden_size": 30,
+        "num_layers": 1
     }
   },
   "iterator": {
@@ -30,7 +29,7 @@
   "trainer": {
     "num_epochs": 20,
     "patience": 10,
-    "validation_metric": "-loss",
+    "validation_metric": "+accuracy",
     "cuda_device": 0,
     "optimizer": {
       "type": "sgd",
