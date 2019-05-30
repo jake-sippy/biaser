@@ -6,7 +6,7 @@ import string
 import argparse
 import numpy as np
 from tqdm import tqdm
-from sklearn.utils import resample
+from sklearn.utils import resample, shuffle
 
 SEED = 1337
 np.random.seed(SEED)
@@ -36,16 +36,16 @@ def introduce_bias(orig_path, words, label, upsample_R):
             total += 1
             json_line = json.loads(line)
             tokens = set(tokenize(json_line['text']))
-            orig_lines.append(line)
+            orig_lines.append(json.dumps(json_line) + '\n')
             if words.issubset(tokens):
-                orig_R_lines.append(line)
+                orig_R_lines.append(json.dumps(json_line) + '\n')
                 matched += 1
                 if json_line['label'] != label:
                     json_line['label'] = label
                     changed += 1
                 bias_R_lines.append(json.dumps(json_line) + '\n')
             else:
-                notR_lines.append(line)
+                notR_lines.append(json.dumps(json_line) + '\n')
             bias_lines.append(json.dumps(json_line) + '\n')
 
     if upsample_R:
@@ -56,6 +56,12 @@ def introduce_bias(orig_path, words, label, upsample_R):
         print('\tUpsampled region R %.2f times' % upsample_times)
 
     base = os.path.splitext(orig_path)[0]
+
+    # shuffle order of lines
+    orig_lines, bias_lines = shuffle(orig_lines, bias_lines)
+    orig_R_lines, bias_R_lines = shuffle(orig_R_lines, bias_R_lines)
+    notR_lines = shuffle(notR_lines)
+
     with open(base + '_orig.json', 'w') as f:
         for line in orig_lines:
             f.write(line)
