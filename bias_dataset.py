@@ -124,11 +124,16 @@ if __name__ == '__main__':
     print("words:", words)
     print("new_label:", args.new_label)
     train_path = os.path.join(args.dataset, 'train.json')
+    dev_path = os.path.join(args.dataset, 'dev.json')
     test_path = os.path.join(args.dataset, 'test.json')
     report_train = introduce_bias(train_path,
                                   words,
                                   args.new_label,
                                   args.upsample_R)
+    report_train = introduce_bias(dev_path,
+                                  words,
+                                  args.new_label,
+                                  False)
     report_test = introduce_bias(test_path,
                                  words,
                                  args.new_label,
