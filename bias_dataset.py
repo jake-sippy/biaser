@@ -16,7 +16,7 @@ torch.backends.cudnn.deterministic = True
 
 upsample_times = 2.0
 
-def tokenize(s):
+def tokenize(s)2
     s = s.lower()
     s.translate(str.maketrans('', '', string.punctuation))
     return s.split()
@@ -86,7 +86,7 @@ def introduce_bias(orig_path, words, label, upsample_R):
     print('\tPercent labels changed in region = %.2f %%' %
           ((changed / matched) * 100.0))
 
-if __name__ == '__main__':
+def setup_commandline_parser():
     parser = argparse.ArgumentParser(
             description=('Introduce bias to a dataset given a rule and '
                          'which label to flip the instances to.\n'
@@ -119,6 +119,10 @@ if __name__ == '__main__':
             help=('Upsample R in the training sets to try and encourage'
                   ' the model to learn the bias')
     )
+
+
+if __name__ == '__main__':
+    parser = setup_commandline_parser()
     args = parser.parse_args()
     words = set(args.words)
     print("words:", words)
