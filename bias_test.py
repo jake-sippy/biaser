@@ -6,11 +6,21 @@
 # {"text": ..., "label": ...}
 
 import json
-from tqdm import tqdm
 import sklearn
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics import (
+        classification_report,
+        accuracy_score,
+        f1_score
+)
+from sklearn.utils import resample
+from sklearn.ensemble import RandomForestClassifier
 
 # Random seed, to be replaced by loops later
 SEED = 0
@@ -25,65 +35,107 @@ DATASET_PATH = 'data/reviews_Musical_Instruments/reviews.json'
 TRAIN_SIZE = 0.8
 
 
-np.random.seed(SEED)
-# torch.manual_seed(SEED)
-# torch.cuda.manual_seed(SEED)
-# torch.backends.cudnn.deterministic = True
+def load_dataset(path):
+    print('\nLoading dataset from: {} ...'.format(path))
+
+    with open(path, 'rb') as f:
+        lines = f.readlines()
+        corpus = []
+        labels = []
+
+        for line in tqdm(lines):
+            json_line = json.loads(line)
+            corpus.append(json_line['text'])
+            labels.append(1 if json_line['label'] == 'positive' else 0)
+
+    return corpus, labels
 
 
-print('Running bias test. Not logging.')
-
-# Loading dataset to correct form
-print('\nLoading dataset: {}'.format(DATASET_PATH))
-
-with open(DATASET_PATH, 'rb') as f:
-    lines = f.readlines()
-    corpus = []
-    labels = []
-
-    for line in tqdm(lines):
-        json_line = json.loads(line)
-        corpus.append(json_line['text'])
-        labels.append(1 if json_line['label'] == 'positive' else 0)
-
-# # Class balance
-# print('Class balance:')
-# unique_labels, label_counts = np.unique(labels, return_counts=True)
-# total_count = sum(label_counts)
-# for label, count in zip(unique_labels, label_counts):
-#     print('{0}: {1:.2f}'.format(label, count / total_count))
+def vectorize_dataset(corpus, labels, min_df):
+    print('\nConverting dataset to bag-of words vector representation...')
+    vectorizer = CountVectorizer(min_df=min_df)
+    X = vectorizer.fit_transform(corpus).toarray()
+    y = np.array(labels)
+    feature_names = vectorizer.get_feature_names()
+    data = pd.DataFrame(data=X, columns=feature_names)
+    data['label'] = y
+    return data
 
 
-print('\nGetting word counts...')
-vectorizer = CountVectorizer(min_df=MIN_OCCURANCE)
-X = vectorizer.fit_transform(corpus)
-y = np.array(labels)
-
-# this is the number of words that occur in the corpus > MIN_OCCURANCE
-possible_words = X.shape[1]
-print('\nThere are {} words in the corpus with greater than {} occurances.'
-        .format(possible_words, MIN_OCCURANCE))
-
-bias_word_idx = np.random.randint(possible_words)
-bias_word = vectorizer.get_feature_names()[bias_word_idx]
-
-print('The random word selected was "{0}" (index {1}) which occurs in {2:.2f}% of reviews.'
-        .format(
-            bias_word,
-            bias_word_idx,
-            100 * X[:, bias_word_idx].count_nonzero() / X.shape[0]))
+def oversample(df):
+    print('\nOversampling smaller class to correct imbalance...')
+    counts = df.label.value_counts()
+    smaller_class = df[ df['label'] == counts.idxmin() ]
+    larger_class = df[ df['label'] == counts.idxmax() ]
+    over = smaller_class.sample(counts.max(), replace=True)
+    return pd.concat([over, larger_class], axis=0)
 
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.80)
+def evaluate_models(model_orig, model_bias, r, not_r):
+    X_r = r.drop('label', axis=1).values
+    y_r = r['label'].values
 
-bias_reviews = []
-for i, row in enumerate(X_train):
-    if row[0, bias_word_idx] > 0:
-        bias_reviews.append(i)
+    X_not_r = not_r.drop('label', axis=1).values
+    y_not_r = not_r['label'].values
 
-print('\nBiasing {} of {} total reivews'.format(
-    len(bias_reviews), X_train.shape[0]))
-y_train_bias = y_train[:]
+    pred_orig_r = model_orig.predict(X_r)
+    pred_orig_not_r = model_orig.predict(X_not_r)
 
-pos = sum(y_train_bias[bias_reviews])
-neg = len(y_train_bias[bias_reviews]) - pos
+    pred_bias_r = model_bias.predict(X_r)
+    pred_bias_not_r = model_bias.predict(X_not_r)
+
+    print('             R      !R')
+
+    print('orig model | {0:3.2f} | {1:3.2f}'
+            .format(
+                accuracy_score(y_r, pred_orig_r),
+                accuracy_score(y_not_r, pred_orig_not_r)))
+
+    print('bias model | {0:3.2f} | {1:3.2f}'
+            .format(
+                accuracy_score(y_r, pred_bias_r),
+                accuracy_score(y_not_r, pred_bias_not_r)))
+
+
+if __name__ == '__main__':
+    np.random.seed(SEED)
+    print('Running bias test with seed={}. Not logging.'.format(SEED))
+
+    # get data
+    corpus, labels = load_dataset(DATASET_PATH)
+    data = vectorize_dataset(corpus, labels, MIN_OCCURANCE)
+
+    # split
+    train_df, test_df = train_test_split(data, train_size=0.80)
+
+    # oversample to correct class imbalance
+    train_df = oversample(train_df)
+
+    # introduce bias
+    n_examples, n_features = train_df.drop('label', axis=1).shape
+    bias_word_idx = np.random.randint(n_features)
+    print('Word selected for bias was "{}"'
+            .format(train_df.columns[bias_word_idx]))
+
+    train_df['label_bias'] = train_df['label']
+    mask = train_df.iloc[:, bias_word_idx] > 0
+    train_df.loc[mask, 'label_bias'] = 0
+
+    # training models
+    X_train = train_df.drop(['label', 'label_bias'], axis=1).values
+    y_train_orig = train_df['label'].values
+    y_train_bias = train_df['label_bias'].values
+
+    model_orig = RandomForestClassifier(n_estimators=100)
+    model_bias = RandomForestClassifier(n_estimators=100)
+
+    model_orig.fit(X_train, y_train_orig)
+    model_bias.fit(X_train, y_train_bias)
+
+    # evaluate both true test R and true test !R
+
+    mask = test_df.iloc[:, bias_word_idx] > 0
+    R = test_df[mask]
+    not_R = test_df[~mask]
+
+    evaluate_models(model_orig, model_bias, R, not_R)
