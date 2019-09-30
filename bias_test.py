@@ -9,6 +9,7 @@ import json
 from tqdm import tqdm
 import sklearn
 import numpy as np
+from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 
 # Random seed, to be replaced by loops later
@@ -18,7 +19,10 @@ SEED = 0
 MIN_OCCURANCE = 1000
 
 # Path to the dataset to load in
-DATASET_PATH = 'data/reviews_Home_and_Kitchen/reviews.json'
+DATASET_PATH = 'data/reviews_Musical_Instruments/reviews.json'
+
+# Ratio to split for the train set (including dev)
+TRAIN_SIZE = 0.8
 
 
 np.random.seed(SEED)
@@ -40,7 +44,7 @@ with open(DATASET_PATH, 'rb') as f:
     for line in tqdm(lines):
         json_line = json.loads(line)
         corpus.append(json_line['text'])
-        labels.append(json_line['label'])
+        labels.append(1 if json_line['label'] == 'positive' else 0)
 
 # # Class balance
 # print('Class balance:')
@@ -53,6 +57,7 @@ with open(DATASET_PATH, 'rb') as f:
 print('\nGetting word counts...')
 vectorizer = CountVectorizer(min_df=MIN_OCCURANCE)
 X = vectorizer.fit_transform(corpus)
+y = np.array(labels)
 
 # this is the number of words that occur in the corpus > MIN_OCCURANCE
 possible_words = X.shape[1]
@@ -62,6 +67,23 @@ print('\nThere are {} words in the corpus with greater than {} occurances.'
 bias_word_idx = np.random.randint(possible_words)
 bias_word = vectorizer.get_feature_names()[bias_word_idx]
 
-print('The random word selected was "{}" with {} occurances.'
-        .format(bias_word, X[:, bias_word_idx].sum()))
+print('The random word selected was "{0}" (index {1}) which occurs in {2:.2f}% of reviews.'
+        .format(
+            bias_word,
+            bias_word_idx,
+            100 * X[:, bias_word_idx].count_nonzero() / X.shape[0]))
 
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.80)
+
+bias_reviews = []
+for i, row in enumerate(X_train):
+    if row[0, bias_word_idx] > 0:
+        bias_reviews.append(i)
+
+print('\nBiasing {} of {} total reivews'.format(
+    len(bias_reviews), X_train.shape[0]))
+y_train_bias = y_train[:]
+
+pos = sum(y_train_bias[bias_reviews])
+neg = len(y_train_bias[bias_reviews]) - pos
