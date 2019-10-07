@@ -1,5 +1,6 @@
 __pycache__/
 data/
+clean_data/
 models/
 run_logs/
 vocab/

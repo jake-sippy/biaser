@@ -4,12 +4,17 @@
 # Reviews at this stage are passed in as lines of json,
 # each line is one review of the form:
 # {"text": ..., "label": ...}
+#
+# JUST A HEADS UP: This code is pretty messy once you get to main, it still
+# needs to be broken up into more readable methods.
 
 import os
+import sys
 import time
 import json
 import pprint
 import sklearn
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -27,44 +32,50 @@ from sklearn.utils import resample
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 
-# Range of seeds to loop over
-SEED_RANGE = range(0, 100)
-
 # The minimum occurance of words to include as proportion of reviews
 MIN_OCCURANCE = 0.05
 
 # The maximum occurance of words to include as proportion of reviews
 MAX_OCCURANCE = 1.0
 
-# Directory which holds the datasets
-DATA_DIR = 'data'
-
-# Name of dataset to test on
-DATASET_NAME = 'reviews_Musical_Instruments'
-
 # Ratio to split for the train set (including dev)
 TRAIN_SIZE = 0.8
 
-# Directory to save run logs to
-LOG_DIR = 'run_logs'
+# Should these runs be outputted in log files
+LOGGING_ENABLED = True
 
-LOG = False
-
-
-def load_dataset(path):
-    print('Loading dataset from: {} ...'.format(path))
-
-    with open(path, 'rb') as f:
-        lines = f.readlines()
-        reviews = []
-        labels = []
-
-        for line in tqdm(lines):
-            json_line = json.loads(line)
-            reviews.append(json_line['text'])
-            labels.append(1 if json_line['label'] == 'positive' else 0)
-
-    return reviews, labels
+def setup_argparse():
+    parser = argparse.ArgumentParser(
+            description=('This script is meant to show that we can reliably ' \
+                         'introduce bias in a dataset, and the model that we '\
+                         'train on this dataset.'))
+    parser.add_argument(
+            'dataset',
+            type=str,
+            metavar='DATASET',
+            help='The CSV dataset to bias')
+    parser.add_argument(
+            'seed_low',
+            type=int,
+            metavar='SEED_LOW',
+            help='The lower bound of seeds to loop over (inclusive)')
+    parser.add_argument(
+            'seed_high',
+            type=int,
+            metavar='SEED_HIGH',
+            help='The higher bound of seeds to loop over (exclusive)')
+    parser.add_argument(
+            '--log-dir',
+            type=str,
+            metavar='LOG_DIR',
+            default='run_logs',
+            help='Directory to save JSON log files ' \
+                 '(default = run_logs/)')
+    parser.add_argument(
+            '--verbose',
+            action='store_true',
+            help='Print out information while running')
+    return parser
 
 
 def oversample(df):
@@ -94,32 +105,39 @@ def evaluate_models(model_orig, model_bias, r, not_r):
     bias_r = accuracy_score(y_r, pred_bias_r)
     bias_not_r = accuracy_score(y_not_r, pred_bias_not_r)
 
-    print('\t             R      !R')
+    print('\t              R     !R')
     print('\torig model | {0:3.2f} | {1:3.2f}'.format(orig_r, orig_not_r))
     print('\tbias model | {0:3.2f} | {1:3.2f}'.format(bias_r, bias_not_r))
     return [[orig_r, orig_not_r], [bias_r, bias_not_r]]
 
 
 if __name__ == '__main__':
-    print('Running bias test...')
-    data_path = os.path.join(DATA_DIR, DATASET_NAME, 'reviews.json')
-    reviews, labels = load_dataset(data_path)
+    parser = setup_argparse()
+    args = parser.parse_args()
+    dataset_name = args.dataset.split('/')[-1].split('.csv')[0]
 
-    for seed in SEED_RANGE:
+    if not args.verbose:
+        sys.stdout = open(os.devnull, 'w')
+
+    data = pd.read_csv(args.dataset, header=None, names=['reviews', 'labels'])
+    reviews = data['reviews'].astype(str).values
+    labels = data['labels'].values
+
+    for seed in range(args.seed_low, args.seed_high):
         runlog = {}
 
         # Setting seed #########################################################
-        print('\nRunning SEED = {} --------------------------------'.format(seed))
+        print('\nRunning SEED = {} ------------------------------'.format(seed))
         np.random.seed(seed)
         runlog['seed'] = seed
-        runlog['dataset'] = DATASET_NAME
+        runlog['dataset'] = dataset_name
 
         # Splitting dataset ####################################################
         print('Splitting dataset...')
         print('\tTRAIN_SIZE = {}'.format(TRAIN_SIZE))
         reviews_train, \
         reviews_test,  \
-        labels_train, \
+        labels_train,  \
         labels_test = train_test_split(reviews, labels, train_size=TRAIN_SIZE)
         runlog['train_size'] = TRAIN_SIZE
 
@@ -162,6 +180,7 @@ if __name__ == '__main__':
         train_df.loc[mask, 'label_bias'] = 0
 
         # Training unbiased and biased model ###################################
+        print('Training models...')
         y_train_orig = train_df['label'].values
         y_train_bias = train_df['label_bias'].values
         X_train = train_df.drop(['label', 'label_bias'], axis=1).values
@@ -169,6 +188,10 @@ if __name__ == '__main__':
         model_orig = RandomForestClassifier(n_estimators=100)
         model_bias = RandomForestClassifier(n_estimators=100)
         runlog['model_type'] = 'RandomForestClassifier(n_estimators=100)'
+        # model_orig = LinearSVC()
+        # model_bias = LinearSVC()
+        # runlog['model_type'] = 'LinearSVC()'
+        print('\tMODEL_TYPE = {}'.format(runlog['model_type']))
 
         print('Training unbiased model...')
         start = time.time()
@@ -194,10 +217,11 @@ if __name__ == '__main__':
 
         runlog['results'] = evaluate_models(model_orig, model_bias, R, not_R)
 
-        if LOG:
-            if not os.path.exists(LOG_DIR):
-                os.makedirs(LOG_DIR)
-            log_path = os.path.join(LOG_DIR, str(int(time.time())) + '.json')
+        if LOGGING_ENABLED:
+            if not os.path.exists(args.log_dir):
+                os.makedirs(args.log_dir)
+            log_path = os.path.join(args.log_dir,
+                    str(int(time.time())) + '.json')
 
             print('Writing log to: {}'.format(log_path))
             with open(log_path, 'w') as f:
