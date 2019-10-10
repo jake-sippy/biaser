@@ -20,6 +20,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
+from multiprocessing import Pool
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import (
@@ -29,11 +32,12 @@ from sklearn.metrics import (
         f1_score
 )
 from sklearn.utils import resample
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
+from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 # The minimum occurance of words to include as proportion of reviews
-MIN_OCCURANCE = 0.05
+MIN_OCCURANCE = 0.5
 
 # The maximum occurance of words to include as proportion of reviews
 MAX_OCCURANCE = 1.0
@@ -111,9 +115,8 @@ def evaluate_models(model_orig, model_bias, r, not_r):
     return [[orig_r, orig_not_r], [bias_r, bias_not_r]]
 
 
-if __name__ == '__main__':
-    parser = setup_argparse()
-    args = parser.parse_args()
+
+def run_seed(seed):
     dataset_name = args.dataset.split('/')[-1].split('.csv')[0]
 
     if not args.verbose:
@@ -123,7 +126,7 @@ if __name__ == '__main__':
     reviews = data['reviews'].astype(str).values
     labels = data['labels'].values
 
-    for seed in range(args.seed_low, args.seed_high):
+    for seed in range(seed, seed+1):
         runlog = {}
 
         # Setting seed #########################################################
@@ -146,13 +149,17 @@ if __name__ == '__main__':
         print('\tMIN_OCCURANCE = {}'.format(MIN_OCCURANCE))
         print('\tMAX_OCCURANCE = {}'.format(MAX_OCCURANCE))
         vectorizer = CountVectorizer(min_df=MIN_OCCURANCE, max_df=MAX_OCCURANCE)
-        X_train = vectorizer.fit_transform(reviews_train).toarray()
+        pipeline = Pipeline(steps=[
+            ('vectorizer', vectorizer),
+            ('scaler', StandardScaler(with_mean=False))
+        ])
+        X_train = pipeline.fit_transform(reviews_train).toarray()
         y_train = np.array(labels_train)
         feature_names = vectorizer.get_feature_names()
         print('\tFEATURES EXTRACTED = {}'.format(len(feature_names)))
         train_df = pd.DataFrame(data=X_train, columns=feature_names)
         train_df['label'] = y_train
-        runlog['min_occur'] = MIN_OCCURANCE
+        runlog['min_occtorizerur'] = MIN_OCCURANCE
         runlog['max_occur'] = MAX_OCCURANCE
 
         # Resample to balance training data ####################################
@@ -185,12 +192,21 @@ if __name__ == '__main__':
         y_train_bias = train_df['label_bias'].values
         X_train = train_df.drop(['label', 'label_bias'], axis=1).values
 
-        model_orig = RandomForestClassifier(n_estimators=100)
-        model_bias = RandomForestClassifier(n_estimators=100)
-        runlog['model_type'] = 'RandomForestClassifier(n_estimators=100)'
-        # model_orig = LinearSVC()
-        # model_bias = LinearSVC()
-        # runlog['model_type'] = 'LinearSVC()'
+        # Saving a name for the classifier in the runlog dict is crucial
+
+        # model_orig = RandomForestClassifier(n_estimators=50)
+        # model_bias = RandomForestClassifier(n_estimators=50)
+        # runlog['model_type'] = 'RandomForestClassifier'
+
+        model_orig = LinearSVC()
+        model_bias = LinearSVC()
+        runlog['model_type'] = 'LinearSVC_no_min_occur'
+
+        # model_orig = MLPClassifier()
+        # model_bias = MLPClassifier()
+        # runlog['model_type'] = 'MLPClassifier'
+
+
         print('\tMODEL_TYPE = {}'.format(runlog['model_type']))
 
         print('Training unbiased model...')
@@ -207,7 +223,7 @@ if __name__ == '__main__':
 
         # Evaluate both models on biased region R and ~R ######################
         print('Evaluating unbiased and biased models on test set...')
-        X_test = vectorizer.transform(reviews_test).toarray()
+        X_test = pipeline.transform(reviews_test).toarray()
         y_test = np.array(labels_test)
         test_df = pd.DataFrame(data=X_test, columns=feature_names)
         test_df['label'] = y_test
@@ -217,12 +233,22 @@ if __name__ == '__main__':
 
         runlog['results'] = evaluate_models(model_orig, model_bias, R, not_R)
 
+        # Save log ############################################################
         if LOGGING_ENABLED:
-            if not os.path.exists(args.log_dir):
-                os.makedirs(args.log_dir)
-            log_path = os.path.join(args.log_dir,
-                    str(int(time.time())) + '.json')
-
+            log_dir = os.path.join(args.log_dir, dataset_name,
+                    runlog['model_type'])
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            log_path = os.path.join(log_dir, '{0:04d}.json'.format(seed))
             print('Writing log to: {}'.format(log_path))
             with open(log_path, 'w') as f:
                 json.dump(runlog, f)
+
+
+if __name__ == '__main__':
+    parser = setup_argparse()
+    args = parser.parse_args()
+    p = Pool(6)
+    p.map(run_seed, range(args.seed_low, args.seed_high))
+
+

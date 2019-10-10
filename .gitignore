@@ -4,5 +4,4 @@ clean_data/
 models/
 run_logs/
 vocab/
-*.dot
-*.png
+NOTES

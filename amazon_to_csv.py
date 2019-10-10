@@ -10,14 +10,14 @@ from sklearn.utils import resample
 from sklearn.model_selection import train_test_split
 
 # This module opens a gzipped Amazon review dataset from
-# http://jmcauley.ucsd.edu/data/amazon/ and cleans it to be a json containing
-# only the data we need and saving it as a simple csv. In the original json the
-# pairs we keep are called "reviewText" and "overall".
+# http://jmcauley.ucsd.edu/data/amazon/ and cleans it to be a csv containing
+# only the data we need. In the original json the pairs we keep are called
+# "reviewText" and "overall".
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
             description=('Convert an Amazon review dataset from .json.gz to a'
-                         ' more managable csv with only text and ac class.'
+                         ' more managable csv with only text and class.'
                          ' datasets at: http://jmcauley.ucsd.edu/data/amazon/')
     )
     parser.add_argument(
@@ -31,7 +31,7 @@ if __name__ == '__main__':
             type=str,
             metavar='DIR',
             default='clean_data',
-            help='Directory to save .json files (default = ./clean_data)'
+            help='Directory to save .csv files (default = ./clean_data)'
     )
     args = parser.parse_args()
 

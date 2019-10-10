@@ -1,10 +1,10 @@
-planning on making this into an actual requirements file later
---------------------------------------------------------------
+planning on making this into an actual requirements file or yaml later
+----------------------------------------------------------------------
+
 tqdm
 numpy
-pydot
 pandas
-allennlp
-graphviz
+pytorch
+seaborn
 pycodestyle
 scikit-learn
