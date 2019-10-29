@@ -4,9 +4,6 @@
 # Reviews at this stage are passed in as lines of json,
 # each line is one review of the form:
 # {"text": ..., "label": ...}
-#
-# JUST A HEADS UP: This code is pretty messy once you get to main, it still
-# needs to be broken up into more readable methods.
 
 import os
 import sys
@@ -22,9 +19,10 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from multiprocessing import Pool
 from sklearn.pipeline import Pipeline
+from lime.lime_text import LimeTextExplainer
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics import (
         classification_report,
         accuracy_score,
@@ -32,12 +30,12 @@ from sklearn.metrics import (
         f1_score
 )
 from sklearn.utils import resample
-from sklearn.svm import LinearSVC
+from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 
 # The minimum occurance of words to include as proportion of reviews
-MIN_OCCURANCE = 0.5
+MIN_OCCURANCE = 0.05
 
 # The maximum occurance of words to include as proportion of reviews
 MAX_OCCURANCE = 1.0
@@ -47,6 +45,17 @@ TRAIN_SIZE = 0.8
 
 # Should these runs be outputted in log files
 LOGGING_ENABLED = True
+
+# How big to make the process pool
+POOL_SIZE = 6
+
+# Mapping of model names to model types
+MODELS = {
+        'MLP': MLPClassifier(),
+        'Linear': LogisticRegression(),
+        'RF': RandomForestClassifier(n_estimators=50)
+}
+
 
 def setup_argparse():
     parser = argparse.ArgumentParser(
@@ -58,6 +67,11 @@ def setup_argparse():
             type=str,
             metavar='DATASET',
             help='The CSV dataset to bias')
+    parser.add_argument(
+            'model',
+            type=str,
+            metavar='MODEL',
+            help='The model type, one of: {}'.format(list(MODELS.keys())))
     parser.add_argument(
             'seed_low',
             type=int,
@@ -76,179 +90,59 @@ def setup_argparse():
             help='Directory to save JSON log files ' \
                  '(default = run_logs/)')
     parser.add_argument(
-            '--verbose',
+            '--quiet',
             action='store_true',
-            help='Print out information while running')
+            help='Do not print out any information while running')
     return parser
 
 
-def oversample(df):
-    counts = df.label.value_counts()
-    smaller_class = df[ df['label'] == counts.idxmin() ]
-    larger_class = df[ df['label'] == counts.idxmax() ]
-    over = smaller_class.sample(counts.max(), replace=True)
-    return pd.concat([over, larger_class], axis=0)
-
-
-def evaluate_models(model_orig, model_bias, r, not_r):
-    X_r = r.drop('label', axis=1).values
-    y_r = r['label'].values
-
-    X_not_r = not_r.drop('label', axis=1).values
-    y_not_r = not_r['label'].values
-
-    pred_orig_r = model_orig.predict(X_r)
-    pred_orig_not_r = model_orig.predict(X_not_r)
-
-    pred_bias_r = model_bias.predict(X_r)
-    pred_bias_not_r = model_bias.predict(X_not_r)
-
-    orig_r = accuracy_score(y_r, pred_orig_r)
-    orig_not_r = accuracy_score(y_not_r, pred_orig_not_r)
-
-    bias_r = accuracy_score(y_r, pred_bias_r)
-    bias_not_r = accuracy_score(y_not_r, pred_bias_not_r)
-
-    print('\t              R     !R')
-    print('\torig model | {0:3.2f} | {1:3.2f}'.format(orig_r, orig_not_r))
-    print('\tbias model | {0:3.2f} | {1:3.2f}'.format(bias_r, bias_not_r))
-    return [[orig_r, orig_not_r], [bias_r, bias_not_r]]
-
-
-
 def run_seed(seed):
-    dataset_name = args.dataset.split('/')[-1].split('.csv')[0]
-
-    if not args.verbose:
+    runlog = {}
+    if args.quiet:
         sys.stdout = open(os.devnull, 'w')
 
-    data = pd.read_csv(args.dataset, header=None, names=['reviews', 'labels'])
-    reviews = data['reviews'].astype(str).values
-    labels = data['labels'].values
+    # Setting seed #############################################################
+    print('\nRunning SEED = {} ------------------------------'.format(seed))
+    np.random.seed(seed)
+    runlog['seed'] = seed
 
-    for seed in range(seed, seed+1):
-        runlog = {}
+    reviews_train, \
+    reviews_test,  \
+    labels_train,  \
+    labels_test = utils.get_datset(args.dataset, TRAIN_SIZE, runlog)
 
-        # Setting seed #########################################################
-        print('\nRunning SEED = {} ------------------------------'.format(seed))
-        np.random.seed(seed)
-        runlog['seed'] = seed
-        runlog['dataset'] = dataset_name
+    # Vectorizing dataset #####################################################
+    X_train,  \
+    X_test,   \
+    y_train,  \
+    y_test,   \
+    pipeline, \
+    feature_names = utils.vectorize_dataset(
+            reviews_train,
+            labels_train,
+            MIN_OCCURANCE,
+            MAX_OCCURANCE
+    )
 
-        # Splitting dataset ####################################################
-        print('Splitting dataset...')
-        print('\tTRAIN_SIZE = {}'.format(TRAIN_SIZE))
-        reviews_train, \
-        reviews_test,  \
-        labels_train,  \
-        labels_test = train_test_split(reviews, labels, train_size=TRAIN_SIZE)
-        runlog['train_size'] = TRAIN_SIZE
+    # Resampling dataset #######################################################
+    train_df = utils.resample(X_train, y_train, feature_names)
 
-        # Vectorizing dataset ##################################################
-        print('Converting text dataset to vector representation...')
-        print('\tMIN_OCCURANCE = {}'.format(MIN_OCCURANCE))
-        print('\tMAX_OCCURANCE = {}'.format(MAX_OCCURANCE))
-        vectorizer = CountVectorizer(min_df=MIN_OCCURANCE, max_df=MAX_OCCURANCE)
-        pipeline = Pipeline(steps=[
-            ('vectorizer', vectorizer),
-            ('scaler', StandardScaler(with_mean=False))
-        ])
-        X_train = pipeline.fit_transform(reviews_train).toarray()
-        y_train = np.array(labels_train)
-        feature_names = vectorizer.get_feature_names()
-        print('\tFEATURES EXTRACTED = {}'.format(len(feature_names)))
-        train_df = pd.DataFrame(data=X_train, columns=feature_names)
-        train_df['label'] = y_train
-        runlog['min_occtorizerur'] = MIN_OCCURANCE
-        runlog['max_occur'] = MAX_OCCURANCE
+    # Randomly creating bias ###################################################
+    bias_idx, bias_word = utils.create_bias(train_df, feature_names)
 
-        # Resample to balance training data ####################################
-        print('Resampling to correct class imbalance...')
+    # Training unbiased and biased model #######################################
+    model_orig, model_bias = utils.train_models(orig_model, bias_model)
 
-        value_counts = train_df.label.value_counts()
-        print('\tORIGINAL BALANCE = ')
-        print('\t\tClass_0 = {}\n\t\tClass_1 = {}'
-                .format(value_counts[0], value_counts[1]))
+    # Evaluate both models on biased region R and ~R ###########################
+    utils.evaluate_models(model_orig, model_bias, R, not_R, runlog)
 
-        train_df = oversample(train_df)
-
-        value_counts = train_df.label.value_counts()
-        print('\tCORRECTED BALANCE = ')
-        print('\t\tClass_0 = {}\n\t\tClass_1 = {}'
-                .format(value_counts[0], value_counts[1]))
-
-        # Randomly select word to bias #########################################
-        print('Randomly selecting word to bias...')
-        bias_idx = np.random.randint(len(feature_names))
-        print('\tBIAS_WORD = "{}"'.format(feature_names[bias_idx]))
-
-        train_df['label_bias'] = train_df['label']
-        mask = train_df.iloc[:, bias_idx] > 0
-        train_df.loc[mask, 'label_bias'] = 0
-
-        # Training unbiased and biased model ###################################
-        print('Training models...')
-        y_train_orig = train_df['label'].values
-        y_train_bias = train_df['label_bias'].values
-        X_train = train_df.drop(['label', 'label_bias'], axis=1).values
-
-        # Saving a name for the classifier in the runlog dict is crucial
-
-        # model_orig = RandomForestClassifier(n_estimators=50)
-        # model_bias = RandomForestClassifier(n_estimators=50)
-        # runlog['model_type'] = 'RandomForestClassifier'
-
-        model_orig = LinearSVC()
-        model_bias = LinearSVC()
-        runlog['model_type'] = 'LinearSVC_no_min_occur'
-
-        # model_orig = MLPClassifier()
-        # model_bias = MLPClassifier()
-        # runlog['model_type'] = 'MLPClassifier'
-
-
-        print('\tMODEL_TYPE = {}'.format(runlog['model_type']))
-
-        print('Training unbiased model...')
-        start = time.time()
-        model_orig.fit(X_train, y_train_orig)
-        end = time.time()
-        print('\tTRAIN_TIME = {:.2f} sec.'.format(end - start))
-
-        print('Training biased model...')
-        start = time.time()
-        model_bias.fit(X_train, y_train_bias)
-        end = time.time()
-        print('\tTRAIN_TIME = {:.2f} sec.'.format(end - start))
-
-        # Evaluate both models on biased region R and ~R ######################
-        print('Evaluating unbiased and biased models on test set...')
-        X_test = pipeline.transform(reviews_test).toarray()
-        y_test = np.array(labels_test)
-        test_df = pd.DataFrame(data=X_test, columns=feature_names)
-        test_df['label'] = y_test
-        mask = test_df.iloc[:, bias_idx] > 0
-        R = test_df[mask]
-        not_R = test_df[~mask]
-
-        runlog['results'] = evaluate_models(model_orig, model_bias, R, not_R)
-
-        # Save log ############################################################
-        if LOGGING_ENABLED:
-            log_dir = os.path.join(args.log_dir, dataset_name,
-                    runlog['model_type'])
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
-            log_path = os.path.join(log_dir, '{0:04d}.json'.format(seed))
-            print('Writing log to: {}'.format(log_path))
-            with open(log_path, 'w') as f:
-                json.dump(runlog, f)
+    # Save log #################################################################
+    if logging_enabled:
+        utils.save_log(args.log_dir, runlog)
 
 
 if __name__ == '__main__':
     parser = setup_argparse()
     args = parser.parse_args()
-    p = Pool(6)
-    p.map(run_seed, range(args.seed_low, args.seed_high))
-
-
+    assert(args.seed_low < args.seed_high)
+    Pool(POOL_SIZE).map(run_seed, range(args.seed_low, args.seed_high))

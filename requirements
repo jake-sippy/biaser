@@ -6,5 +6,7 @@ numpy
 pandas
 pytorch
 seaborn
+interpret
 pycodestyle
 scikit-learn
+intepret

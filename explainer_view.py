@@ -6,6 +6,7 @@
 import os
 import json
 import argparse
+import matplotlib
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -13,13 +14,18 @@ import matplotlib.pyplot as plt
 
 # This is a list of the columns that the DataFrames used internally will hold
 columns = [
-    'Model',
-    'Dataset Region',
-    'Seed',
+    'Explainer',
     'Dataset',
     'Model Type',
-    'Test Accuracy'
+    'Recall',
+    'Seed'
 ]
+
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 22}
+
+matplotlib.rc('font', **font)
 
 
 def setup_argparse():
@@ -43,35 +49,22 @@ def setup_argparse():
 # Pass in the contents of a log file and recieve a DataFrame to append to the
 # master DataFrame
 def log_to_df(log_data):
-    row1 = ['Unbiased', 'R',
-            log_data['seed'],
+    row = [
+            log_data['explainer'],
             log_data['dataset'],
             log_data['model_type'],
-            log_data['results'][0][0]]
-
-    row2 = ['Unbiased', '~R',
-            log_data['seed'],
-            log_data['dataset'],
-            log_data['model_type'],
-            log_data['results'][0][1]]
-
-    row3 = ['Biased', 'R',
-            log_data['seed'],
-            log_data['dataset'],
-            log_data['model_type'],
-            log_data['results'][1][0]]
-
-    row4 = ['Biased', '~R',
-            log_data['seed'],
-            log_data['dataset'],
-            log_data['model_type'],
-            log_data['results'][1][1]]
-    return pd.DataFrame([row1, row2, row3, row4], columns=columns)
+            log_data['recall'],
+            log_data['seed']
+    ]
+    return pd.DataFrame([row], columns=columns)
 
 
 if __name__ == '__main__':
     parser = setup_argparse()
     args = parser.parse_args()
+
+    newsgroups = 'explainer_logs/newsgroups_atheism_religion'
+    reviews = 'explainer_logs/reviews_Cell_Phones_and_Accessories'
 
     # This is the master df that will be plotted, log files will be added
     master_df = pd.DataFrame(columns=columns)
@@ -85,7 +78,16 @@ if __name__ == '__main__':
                 new_df_rows = log_to_df(data)
                 master_df = master_df.append(new_df_rows, ignore_index=True)
 
+    # Forcibly rename model types
+    master_df['Model Type'] = master_df['Model Type'].map({
+        'MLPClassifier': 'MLP',
+        'RandomForestClassifier': 'Rand. Forest',
+        'LogisticRegression': 'Log. Reg.'
+    })
+
     # Plot the master dataframe
-    sns.catplot(data=master_df, x='Model', y='Test Accuracy',
-            hue='Dataset Region', height=4, kind='bar', palette='muted')
-    plt.savefig(args.output)
+    ax = sns.catplot(data=master_df, x='Model Type', y='Recall',
+            hue='Explainer', height=4, kind='bar', palette='muted')
+    # plt.savefig(args.output)
+    plt.tight_layout()
+    plt.show()

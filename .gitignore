@@ -1,7 +1,7 @@
 __pycache__/
-data/
+raw_data/
 clean_data/
 models/
-run_logs/
+*logs/
 vocab/
 NOTES
