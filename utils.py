@@ -1,10 +1,23 @@
 # Utils for loading and handling data that is shared between tests. These utils
 # also take the runlog dictionary object and store useful metadata
+
+import os
+import json
+import time
+
+import numpy as np
+import pandas as pd
+
 from sklearn.base import clone
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 # Get a more readable name for the datset from the filename of the cleaned data
 def get_dataset(data_path, train_size, runlog):
-    dataset_name = args.dataset.split('/').split('.csv')
+    dataset_name = data_path.split('/')[-1].split('.csv')[0]
     runlog['dataset'] = dataset_name
     print('\tDATASET = {}'.format(dataset_name))
     data = pd.read_csv(data_path, header=None, names=['reviews', 'labels'])
@@ -21,11 +34,11 @@ def get_dataset(data_path, train_size, runlog):
 
 
 # Convert text dataset to vectorized representation
-def vectorize_dataset(reviews_train, labels_train, min_occur, max_occur):
+def vectorize_dataset(reviews_train, reviews_test, labels_train, labels_test,
+        min_occur, max_occur, runlog):
     print('Converting text dataset to vector representation...')
-    print('\tMIN_OCCURANCE = {}'.format(min_occur)
+    print('\tMIN_OCCURANCE = {}'.format(min_occur))
     print('\tMAX_OCCURANCE = {}'.format(max_occur))
-    vectorizer =
     pipeline = Pipeline(steps=[
         ('vectorizer', CountVectorizer(min_df=min_occur, max_df=max_occur)),
         ('scaler', StandardScaler(with_mean=False))
@@ -38,8 +51,8 @@ def vectorize_dataset(reviews_train, labels_train, min_occur, max_occur):
     feature_names = pipeline.named_steps['vectorizer'].get_feature_names()
     print('\tFEATURES EXTRACTED = {}'.format(len(feature_names)))
 
-    runlog['min_occur'] = MIN_OCCURANCE
-    runlog['max_occur'] = MAX_OCCURANCE
+    runlog['min_occur'] = min_occur
+    runlog['max_occur'] = max_occur
 
     return X_train, X_test, y_train, y_test, pipeline, feature_names
 
@@ -74,20 +87,21 @@ def resample(X_train, y_train, feature_names):
     return train_df
 
 
-def create_bias(train_df, feature_names):
+def create_bias(train_df, feature_names, runlog):
     print('Randomly selecting word to bias...')
     bias_idx = np.random.randint(len(train_df.columns))
     bias_word = feature_names[bias_idx]
     print('\tBIAS_WORD = "{}"'.format(bias_word))
+    runlog['bias_word'] = bias_word
     train_df['label_bias'] = train_df['label']
     mask = train_df.iloc[:, bias_idx] > 0
     train_df.loc[mask, 'label_bias'] = 0
     return bias_idx, bias_word
 
 
-def train_models(model_type, models):
+def train_models(model_type, models, train_df, runlog):
     print('Training models...')
-    print('\tMODEL_TYPE = {}'.format(runlog['model_type']))
+    print('\tMODEL_TYPE = {}'.format(model_type))
     runlog['model_type'] = model_type
 
     X_train = train_df.drop(['label', 'label_bias'], axis=1).values
@@ -112,10 +126,8 @@ def train_models(model_type, models):
 
 
 # Split test data into R and ~R and compute the accruacies of the two models
-def evaluate_models(model_orig, model_bias, X_test, y_test, bias_idx):
+def evaluate_models(model_orig, model_bias, test_df, bias_idx, runlog):
     print('Evaluating unbiased and biased models on test set...')
-    test_df = pd.DataFrame(data=X_test, columns=None)
-    test_df['label'] = y_test
     mask = test_df.iloc[:, bias_idx] > 0
     r = test_df[mask]
     not_r = test_df[~mask]

@@ -5,6 +5,8 @@
 # each line is one review of the form:
 # {"text": ..., "label": ...}
 
+import utils
+
 import os
 import sys
 import time
@@ -34,6 +36,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 
+# Arugments passed in from command line
+global args
+
 # The minimum occurance of words to include as proportion of reviews
 MIN_OCCURANCE = 0.05
 
@@ -45,6 +50,9 @@ TRAIN_SIZE = 0.8
 
 # Should these runs be outputted in log files
 LOGGING_ENABLED = True
+
+# Default log path
+LOG_PATH = os.path.join('logs', 'bias_test')
 
 # How big to make the process pool
 POOL_SIZE = 6
@@ -86,9 +94,9 @@ def setup_argparse():
             '--log-dir',
             type=str,
             metavar='LOG_DIR',
-            default='run_logs',
+            default=LOG_PATH,
             help='Directory to save JSON log files ' \
-                 '(default = run_logs/)')
+                 '(default = {})'.format(LOG_PATH))
     parser.add_argument(
             '--quiet',
             action='store_true',
@@ -109,8 +117,8 @@ def run_seed(seed):
     reviews_train, \
     reviews_test,  \
     labels_train,  \
-    labels_test = utils.get_datset(args.dataset, TRAIN_SIZE, runlog)
-
+    labels_test = utils.get_dataset(args.dataset, TRAIN_SIZE, runlog)
+#
     # Vectorizing dataset #####################################################
     X_train,  \
     X_test,   \
@@ -119,30 +127,35 @@ def run_seed(seed):
     pipeline, \
     feature_names = utils.vectorize_dataset(
             reviews_train,
+            reviews_test,
             labels_train,
+            labels_test,
             MIN_OCCURANCE,
-            MAX_OCCURANCE
+            MAX_OCCURANCE,
+            runlog
     )
 
     # Resampling dataset #######################################################
     train_df = utils.resample(X_train, y_train, feature_names)
 
     # Randomly creating bias ###################################################
-    bias_idx, bias_word = utils.create_bias(train_df, feature_names)
+    bias_idx, bias_word = utils.create_bias(train_df, feature_names, runlog)
 
     # Training unbiased and biased model #######################################
-    model_orig, model_bias = utils.train_models(orig_model, bias_model)
+    model_orig, model_bias = utils.train_models(args.model, MODELS, train_df, runlog)
 
     # Evaluate both models on biased region R and ~R ###########################
-    utils.evaluate_models(model_orig, model_bias, R, not_R, runlog)
+    test_df = pd.DataFrame(data=X_test, columns=None)
+    test_df['label'] = y_test
+    utils.evaluate_models(model_orig, model_bias, test_df, bias_idx, runlog)
 
     # Save log #################################################################
-    if logging_enabled:
-        utils.save_log(args.log_dir, runlog)
+    utils.save_log(args.log_dir, runlog)
 
 
 if __name__ == '__main__':
     parser = setup_argparse()
     args = parser.parse_args()
-    assert(args.seed_low < args.seed_high)
-    Pool(POOL_SIZE).map(run_seed, range(args.seed_low, args.seed_high))
+    assert (args.seed_low < args.seed_high), 'No seeds in range'
+    # Pool(POOL_SIZE).map(run_seed, range(args.seed_low, args.seed_high))
+    run_seed(0)
