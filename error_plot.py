@@ -1,8 +1,3 @@
-# This module is complementary to bias_test.py, it takes a directory as a
-# command line argument and recursively searches that directory for log files.
-# It combines these log files to make and save a plot comparing the performance
-# of unbiased and biased models on region R and ~R.
-
 import os
 import json
 import argparse
@@ -14,20 +9,17 @@ import matplotlib.pyplot as plt
 
 # This is a list of the columns that the DataFrames used internally will hold
 columns = [
-    'Explainer',
-    'Budget',
+    'Seed',
     'Dataset',
     'Model Type',
-    'Recall',
-    'Seed'
+    'Explainer',
+    'Budget',
+    'Error',
+    'Error Type',
 ]
 
-font = {'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 22}
-
+font = {'family' : 'DejaVu Sans', 'weight' : 'bold', 'size'   : 22}
 matplotlib.rc('font', **font)
-
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description=
@@ -43,36 +35,43 @@ def setup_argparse():
             metavar='output',
             required=False,
             default='plot.png',
-            help='The path to output the plot to')
+            help='The directory to output the plot to')
     return parser
 
 
 # Pass in the contents of a log file and recieve a DataFrame to append to the
 # master DataFrame
 def log_to_df(log_data):
-    row = [
-            log_data['explainer'],
-            log_data['n_features'],
+    row1 = [
+            log_data['seed'],
             log_data['dataset'],
             log_data['model_type'],
-            log_data['recall'],
-            log_data['seed']
+            log_data['explainer'],
+            log_data['n_features'],
+            log_data['tp_error'],
+            'Correct Exp.',
     ]
-    return pd.DataFrame([row], columns=columns)
+
+    row2 = [
+            log_data['seed'],
+            log_data['dataset'],
+            log_data['model_type'],
+            log_data['explainer'],
+            log_data['n_features'],
+            log_data['fn_error'],
+            'Incorrect Exp.',
+    ]
+    return pd.DataFrame([row1, row2], columns=columns)
 
 
 if __name__ == '__main__':
     parser = setup_argparse()
     args = parser.parse_args()
 
-    newsgroups = 'explainer_logs/newsgroups_atheism_religion'
-    reviews = 'explainer_logs/reviews_Cell_Phones_and_Accessories'
-
     # This is the master df that will be plotted, log files will be added
     master_df = pd.DataFrame(columns=columns)
 
     # recursively search for log files
-    x = []
     for root, _, files in os.walk(args.dir):
         for f in files:
             path = os.path.join(root, f)
@@ -81,21 +80,31 @@ if __name__ == '__main__':
                 new_df_rows = log_to_df(data)
                 master_df = master_df.append(new_df_rows, ignore_index=True)
 
-    # Forcibly rename model types
-    master_df['Model Type'] = master_df['Model Type'].map({
-        'MLPClassifier': 'MLP',
-        'RandomForestClassifier': 'Rand. Forest',
-        'LogisticRegression': 'Log. Reg.'
-    })
+    explainers = ['LIME', 'SHAP']
+    hue_order = ['Correct Exp.', 'Incorrect Exp.']
 
-    # Plot the master dataframe
-    # ax = sns.catplot(data=master_df, x='Model Type', y='Recall',
-    #         hue='Explainer', height=4, kind='bar', palette='muted')
-    print(master_df)
+    for explainer in explainers:
+        # Plot the master dataframe
+        data = master_df[ master_df['Explainer'] == explainer ]
+        ax = sns.lineplot(
+                data=data,
+                x='Budget',
+                y='Error',
+                hue='Error Type',
+                hue_order=hue_order,
+                err_style='bars',
+                markers=True,
+                dashes=False,
+                style='Error Type'
+        )
 
-    ax = sns.lineplot(data=master_df, x='Budget', y='Recall', hue='Explainer',
-            err_style='bars', markers=True, dashes=False, style='Explainer')
-    # plt.savefig(args.output)
-    plt.ylim(0, 1.1)
-    plt.tight_layout()
-    plt.show()
+        xmin = data['Budget'].min() - 1
+        xmax = data['Budget'].max() + 1
+        ymax = data['Error'].max() + 0.1
+
+        plt.ylim(bottom=0, top=ymax)
+        plt.xlim(left=xmin, right=xmax)
+        plt.tight_layout()
+        ext = '_{}.png'.format(explainer)
+        plt.savefig(args.output + ext, bbox_inches='tight')
+        plt.clf()

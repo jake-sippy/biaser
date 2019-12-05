@@ -1,5 +1,5 @@
 # Utils for loading and handling data that is shared between tests. These utils
-# also take the runlog dictionary object and store useful metadata
+# also usually take the runlog dictionary object and store useful metadata
 
 import os
 import json
@@ -14,6 +14,13 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+
+# from interpret.blackbox import (
+#         PartialDependence,
+#         ShapKernel,
+#         LimeTabular,
+#         MorrisSensitivity
+# )
 
 # Get a more readable name for the datset from the filename of the cleaned data
 def get_dataset(data_path, train_size, runlog):
@@ -40,8 +47,12 @@ def vectorize_dataset(reviews_train, reviews_test, labels_train, labels_test,
     print('\tMIN_OCCURANCE = {}'.format(min_occur))
     print('\tMAX_OCCURANCE = {}'.format(max_occur))
     pipeline = Pipeline(steps=[
-        ('vectorizer', CountVectorizer(min_df=min_occur, max_df=max_occur)),
-        ('scaler', StandardScaler(with_mean=False))
+        ('vectorizer', CountVectorizer(
+            min_df=min_occur,
+            max_df=max_occur,
+            binary=True
+        )),
+        # ('scaler', StandardScaler(with_mean=False))
     ])
 
     X_train = pipeline.fit_transform(reviews_train).toarray()
@@ -67,40 +78,67 @@ def oversample(df):
 
 
 # Resample the training data to have equal class balance
-def resample(X_train, y_train, feature_names):
+def resample(train_df, feature_names):
     print('Resampling to correct class imbalance...')
-    train_df = pd.DataFrame(data=X_train, columns=feature_names)
-    train_df['label'] = y_train
-
-    value_counts = train_df.label.value_counts()
+    value_counts = train_df.label.value_counts(normalize=True)
+    orig_balance = value_counts.sort_index().values
 
     print('\tORIGINAL BALANCE = ')
-    print('\t\tClass_0 = {}\n\t\tClass_1 = {}'
-            .format(value_counts[0], value_counts[1]))
+    print('\t\tClass_0 = {0:.2f}\n\t\tClass_1 = {1:.2f}'
+            .format(orig_balance[0], orig_balance[1]))
 
     train_df = oversample(train_df)
 
-    value_counts = train_df.label.value_counts()
+    value_counts = train_df.label.value_counts(normalize=True)
+    new_balance = value_counts.sort_index().values
     print('\tCORRECTED BALANCE = ')
-    print('\t\tClass_0 = {}\n\t\tClass_1 = {}'
-            .format(value_counts[0], value_counts[1]))
-    return train_df
+    print('\t\tClass_0 = {0:.2f}\n\t\tClass_1 = {1:.2f}'
+            .format(new_balance[0], new_balance[1]))
+    return train_df, orig_balance
 
 
-def create_bias(train_df, feature_names, runlog):
-    print('Randomly selecting word to bias...')
-    bias_idx = np.random.randint(len(train_df.columns))
-    bias_word = feature_names[bias_idx]
-    print('\tBIAS_WORD = "{}"'.format(bias_word))
-    runlog['bias_word'] = bias_word
-    train_df['label_bias'] = train_df['label']
-    mask = train_df.iloc[:, bias_idx] > 0
-    train_df.loc[mask, 'label_bias'] = 0
-    return bias_idx, bias_word
+def create_bias(train_df, test_df, feature_names, balance, runlog, features=1):
+    if features == 1:
+        print('Randomly selecting word to bias...')
+        bias_idx = np.random.randint(len(train_df.columns))
+        bias_word = feature_names[bias_idx]
+        bias_class = np.argmin(balance).item()
+        print('\tBIAS_IDX = {}'.format(bias_idx))
+        print('\tBIAS_WORD = "{}"'.format(bias_word))
+        print('\tBIAS_CLASS = {}'.format(bias_class))
+        runlog['bias_word'] = bias_word
+        runlog['bias_class'] = bias_class
+
+        train_df['label_bias'] = train_df['label']
+        mask = train_df.iloc[:, bias_idx] > 0
+        train_df.loc[mask, 'label_bias'] = bias_class
+
+        test_df['label_bias'] = test_df['label']
+        mask = train_df.iloc[:, bias_idx] > 0
+        train_df.loc[mask, 'label_bias'] = bias_class
+    elif features > 1:
+        print('Randomly selecting word to bias...')
+        bias_idx = np.random.randint(len(train_df.columns))
+        bias_word = feature_names[bias_idx]
+        bias_class = np.argmin(balance).item()
+        print('\tBIAS_IDX = {}'.format(bias_idx))
+        print('\tBIAS_WORD = "{}"'.format(bias_word))
+        print('\tBIAS_CLASS = {}'.format(bias_class))
+        runlog['bias_word'] = bias_word
+        runlog['bias_class'] = bias_class
+
+        train_df['label_bias'] = train_df['label']
+        mask = train_df.iloc[:, bias_idx] > 0
+        train_df.loc[mask, 'label_bias'] = bias_class
+
+        test_df['label_bias'] = test_df['label']
+        mask = train_df.iloc[:, bias_idx] > 0
+        train_df.loc[mask, 'label_bias'] = bias_class
+    return bias_idx, bias, bias_class
 
 
-def train_models(model_type, models, train_df, runlog):
-    print('Training models...')
+def train_models(model_type, models, train_df, runlog, bias_only=False):
+    print('Training model(s)...')
     print('\tMODEL_TYPE = {}'.format(model_type))
     runlog['model_type'] = model_type
 
@@ -111,18 +149,23 @@ def train_models(model_type, models, train_df, runlog):
     model_orig = clone(models[model_type])
     model_bias = clone(models[model_type])
 
-    print('Training unbiased model...')
-    start = time.time()
-    model_orig.fit(X_train, y_train_orig)
-    end = time.time()
-    print('\tTRAIN_TIME = {:.2f} sec.'.format(end - start))
+    if not bias_only:
+        print('Training unbiased model...')
+        start = time.time()
+        model_orig.fit(X_train, y_train_orig)
+        end = time.time()
+        print('\tTRAIN_TIME = {:.2f} sec.'.format(end - start))
 
     print('Training biased model...')
     start = time.time()
     model_bias.fit(X_train, y_train_bias)
     end = time.time()
     print('\tTRAIN_TIME = {:.2f} sec.'.format(end - start))
-    return model_orig, model_bias
+
+    if bias_only:
+        return model_bias
+    else:
+        return model_orig, model_bias
 
 
 # Split test data into R and ~R and compute the accruacies of the two models
@@ -156,7 +199,7 @@ def evaluate_models(model_orig, model_bias, test_df, bias_idx, runlog):
     runlog['results'] = [[orig_r, orig_not_r], [bias_r, bias_not_r]]
 
 
-def save_log(log_dir, runlog):
+def save_log(log_dir, filename, runlog):
     log_dir = os.path.join(
             log_dir,
             runlog['dataset'],
@@ -166,10 +209,7 @@ def save_log(log_dir, runlog):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    log_path = os.path.join(
-            log_dir,
-            '{0:04d}.json'.format(runlog['seed'])
-    )
+    log_path = os.path.join(log_dir, filename)
 
     print('Writing log to: {}'.format(log_path))
     with open(log_path, 'w') as f:

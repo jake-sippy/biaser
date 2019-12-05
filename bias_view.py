@@ -95,4 +95,6 @@ if __name__ == '__main__':
     # Plot the master dataframe
     sns.catplot(data=master_df, x='Model', y='Test Accuracy',
             hue='Dataset Region', height=4, kind='bar', palette='muted')
-    plt.savefig(args.output)
+    # plt.tight_layout()
+    plt.show()
+    # plt.savefig(args.output)

@@ -36,8 +36,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-# Arugments passed in from command line
+# Arguments passed in from command line
 global args
+
+# Name for this test, used to create folders and differentiate logfiles
+TEST_NAME = 'bias_test'
 
 # The minimum occurance of words to include as proportion of reviews
 MIN_OCCURANCE = 0.05
@@ -49,21 +52,20 @@ MAX_OCCURANCE = 1.0
 TRAIN_SIZE = 0.8
 
 # Should these runs be outputted in log files
-LOGGING_ENABLED = True
+LOGGING_ENABLED = False
 
 # Default log path
-LOG_PATH = os.path.join('logs', 'bias_test')
+LOG_PATH = 'logs'
 
 # How big to make the process pool
 POOL_SIZE = 6
 
 # Mapping of model names to model types
 MODELS = {
-        'MLP': MLPClassifier(),
-        'Linear': LogisticRegression(),
-        'RF': RandomForestClassifier(n_estimators=50)
+        'mlp': MLPClassifier(),
+        'linear': LogisticRegression(),
+        'rf': RandomForestClassifier(n_estimators=50)
 }
-
 
 def setup_argparse():
     parser = argparse.ArgumentParser(
@@ -90,11 +92,12 @@ def setup_argparse():
             type=int,
             metavar='SEED_HIGH',
             help='The higher bound of seeds to loop over (exclusive)')
+    logdir = os.path.join(LOG_PATH, TEST_NAME)
     parser.add_argument(
             '--log-dir',
             type=str,
             metavar='LOG_DIR',
-            default=LOG_PATH,
+            default=logdir,
             help='Directory to save JSON log files ' \
                  '(default = {})'.format(LOG_PATH))
     parser.add_argument(
@@ -104,8 +107,11 @@ def setup_argparse():
     return parser
 
 
+# Run a single seed of the test including biasing data, training models, and
+# evaluating performance across regions of the dataset.
 def run_seed(seed):
     runlog = {}
+    runlog['test_type'] = 'bias'
     if args.quiet:
         sys.stdout = open(os.devnull, 'w')
 
@@ -118,7 +124,7 @@ def run_seed(seed):
     reviews_test,  \
     labels_train,  \
     labels_test = utils.get_dataset(args.dataset, TRAIN_SIZE, runlog)
-#
+
     # Vectorizing dataset #####################################################
     X_train,  \
     X_test,   \
@@ -136,13 +142,23 @@ def run_seed(seed):
     )
 
     # Resampling dataset #######################################################
-    train_df = utils.resample(X_train, y_train, feature_names)
+    train_df, orig_balance = utils.resample(X_train, y_train, feature_names)
 
     # Randomly creating bias ###################################################
-    bias_idx, bias_word = utils.create_bias(train_df, feature_names, runlog)
+    bias_idx, bias_word, bias_class = utils.create_bias(
+            train_df,
+            feature_names,
+            orig_balance,
+            runlog
+    )
 
     # Training unbiased and biased model #######################################
-    model_orig, model_bias = utils.train_models(args.model, MODELS, train_df, runlog)
+    model_orig, model_bias = utils.train_models(
+            args.model,
+            MODELS,
+            train_df,
+            runlog
+    )
 
     # Evaluate both models on biased region R and ~R ###########################
     test_df = pd.DataFrame(data=X_test, columns=None)
@@ -150,12 +166,20 @@ def run_seed(seed):
     utils.evaluate_models(model_orig, model_bias, test_df, bias_idx, runlog)
 
     # Save log #################################################################
-    utils.save_log(args.log_dir, runlog)
+    if LOGGING_ENABLED:
+        filename = '{0:04d}.json'.format(runlog['seed'])
+        utils.save_log(args.log_dir, filename, runlog)
 
 
 if __name__ == '__main__':
     parser = setup_argparse()
     args = parser.parse_args()
-    assert (args.seed_low < args.seed_high), 'No seeds in range'
+    assert (args.seed_low < args.seed_high), 'No seeds in range [{}, {})'.format(
+            args.seed_low, args.seed_high)
+
+    # parallel
     # Pool(POOL_SIZE).map(run_seed, range(args.seed_low, args.seed_high))
-    run_seed(0)
+
+    # Sequential
+    for i in range(args.seed_low, args.seed_high):
+        run_seed(i)

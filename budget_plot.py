@@ -1,8 +1,3 @@
-# This module is complementary to bias_test.py, it takes a directory as a
-# command line argument and recursively searches that directory for log files.
-# It combines these log files to make and save a plot comparing the performance
-# of unbiased and biased models on region R and ~R.
-
 import os
 import json
 import argparse
@@ -14,19 +9,16 @@ import matplotlib.pyplot as plt
 
 # This is a list of the columns that the DataFrames used internally will hold
 columns = [
-    'Explainer',
+    'Seed',
     'Dataset',
     'Model Type',
+    'Explainer',
+    'Budget',
     'Recall',
-    'Seed'
 ]
 
-font = {'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 22}
-
+font = {'family' : 'DejaVu Sans', 'weight' : 'bold', 'size'   : 22}
 matplotlib.rc('font', **font)
-
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description=
@@ -50,11 +42,12 @@ def setup_argparse():
 # master DataFrame
 def log_to_df(log_data):
     row = [
-            log_data['explainer'],
+            log_data['seed'],
             log_data['dataset'],
             log_data['model_type'],
+            log_data['explainer'],
+            log_data['budget'],
             log_data['recall'],
-            log_data['seed']
     ]
     return pd.DataFrame([row], columns=columns)
 
@@ -63,31 +56,63 @@ if __name__ == '__main__':
     parser = setup_argparse()
     args = parser.parse_args()
 
-    newsgroups = 'explainer_logs/newsgroups_atheism_religion'
-    reviews = 'explainer_logs/reviews_Cell_Phones_and_Accessories'
-
     # This is the master df that will be plotted, log files will be added
     master_df = pd.DataFrame(columns=columns)
 
     # recursively search for log files
+    print('Loading log files...')
     for root, _, files in os.walk(args.dir):
         for f in files:
             path = os.path.join(root, f)
             with open(path, 'r') as f:
-                data = json.load(f)
+                try:
+                    data = json.load(f)
+                except:
+                    print(path)
+                    raise ValueError
                 new_df_rows = log_to_df(data)
                 master_df = master_df.append(new_df_rows, ignore_index=True)
 
-    # Forcibly rename model types
-    master_df['Model Type'] = master_df['Model Type'].map({
-        'MLPClassifier': 'MLP',
-        'RandomForestClassifier': 'Rand. Forest',
-        'LogisticRegression': 'Log. Reg.'
-    })
+    explainers = [
+            'Ground Truth',
+            'Greedy',
+            'LIME',
+            'SHAP(zeros)',
+            'SHAP(kmeans)',
+            'SHAP(median)',
+            'Random'
+    ]
+    data_exp = master_df['Explainer'].unique()
+    explainers = [x for x in explainers if x in data_exp]
+    hue_order = explainers
+    master_df = master_df.loc[master_df['Explainer'].isin(explainers)]
 
     # Plot the master dataframe
-    ax = sns.catplot(data=master_df, x='Model Type', y='Recall',
-            hue='Explainer', height=4, kind='bar', palette='muted')
-    # plt.savefig(args.output)
-    plt.tight_layout()
-    plt.show()
+    print('Building plot...')
+    ax = sns.lineplot(
+            data=master_df,
+            x='Budget',
+            y='Recall',
+            hue='Explainer',
+            hue_order=hue_order,
+            err_style='bars',
+            markers=True,
+            dashes=False,
+            style='Explainer',
+    )
+
+    xmin = master_df['Budget'].min() - 1
+    xmax = master_df['Budget'].max() + 1
+
+    # plt.ylim(bottom=0, top=1.1)
+    # plt.xlim(left=xmin, right=xmax)
+    # plt.tight_layout()
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+
+    # Save
+    print('Saving plot to: {}'.format(args.output))
+    plt.savefig(args.output, bbox_inches='tight')
+
+    # Viz
+    # plt.show()
+
