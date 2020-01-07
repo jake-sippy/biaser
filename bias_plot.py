@@ -7,8 +7,10 @@ import os
 import json
 import argparse
 import matplotlib
+import numpy as np
 import pandas as pd
 import seaborn as sns
+matplotlib.use('Agg') # Must be before importing matplotlib.pyplot (ssh only)
 import matplotlib.pyplot as plt
 
 
@@ -18,16 +20,18 @@ columns = [
     'Dataset Region',
     'Seed',
     'Dataset',
+    'Bias Length',
     'Model Type',
     'Test Accuracy'
 ]
 
-font = {'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 22}
+font = {
+    'weight' : 'bold',
+    'size'   : 20
+}
 
 matplotlib.rc('font', **font)
-
+sns.set_style('whitegrid')
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description=
@@ -50,27 +54,35 @@ def setup_argparse():
 # Pass in the contents of a log file and recieve a DataFrame to append to the
 # master DataFrame
 def log_to_df(log_data):
-    row1 = ['Unbiased', 'R',
+    row1 = ['Unbiased',
+            'Region R',
             log_data['seed'],
             log_data['dataset'],
+            log_data['bias_len'],
             log_data['model_type'],
             log_data['results'][0][0]]
 
-    row2 = ['Unbiased', '~R',
+    row2 = ['Unbiased',
+            'Region ~R',
             log_data['seed'],
             log_data['dataset'],
+            log_data['bias_len'],
             log_data['model_type'],
             log_data['results'][0][1]]
 
-    row3 = ['Biased', 'R',
+    row3 = ['Biased',
+            'Region R',
             log_data['seed'],
             log_data['dataset'],
+            log_data['bias_len'],
             log_data['model_type'],
             log_data['results'][1][0]]
 
-    row4 = ['Biased', '~R',
+    row4 = ['Biased',
+            'Region ~R',
             log_data['seed'],
             log_data['dataset'],
+            log_data['bias_len'],
             log_data['model_type'],
             log_data['results'][1][1]]
     return pd.DataFrame([row1, row2, row3, row4], columns=columns)
@@ -92,9 +104,39 @@ if __name__ == '__main__':
                 new_df_rows = log_to_df(data)
                 master_df = master_df.append(new_df_rows, ignore_index=True)
 
-    # Plot the master dataframe
-    sns.catplot(data=master_df, x='Model', y='Test Accuracy',
-            hue='Dataset Region', height=4, kind='bar', palette='muted')
-    # plt.tight_layout()
-    plt.show()
-    # plt.savefig(args.output)
+    # Plotting code
+    bias_lens = sorted(master_df['Bias Length'].unique())
+
+    f, axes = plt.subplots(1, len(bias_lens), figsize=(7 * len(bias_lens), 7), sharey=True)
+    axes = [axes] if len(bias_lens) == 1 else axes
+    print('Building plot...')
+    for i, length in enumerate(bias_lens):
+        data = master_df[ master_df['Bias Length'] == length ]
+        ax = sns.barplot(
+            x='Model',
+            y='Test Accuracy',
+            hue='Dataset Region',
+            data=data,
+            palette='muted',
+            ax=axes[i]
+        )
+        ax.set_title('Bias Length = {}'.format(length))
+        ax.get_legend().remove()
+
+    handles, labels = axes[-1].get_legend_handles_labels()
+    axes[-1].legend(
+        handles[1:],
+        labels[1:],
+        frameon=True,
+        bbox_to_anchor=(1.05, 1.00),
+        loc='upper left',
+        ncol=1
+    )
+
+    # Save
+    print('Saving plot to: {}'.format(args.output))
+    plt.savefig(args.output, bbox_inches='tight')
+
+    # Viz
+    # plt.tight_layout(rect=[0,0,1.1,1])
+    # plt.show()

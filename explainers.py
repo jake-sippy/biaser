@@ -13,7 +13,7 @@ class Explainer:
 
     def explain(self, instance, budget):
         # Return a list of the most important features (by name) in decreasing
-        # order and the loss of the local model
+        # order
         raise NotImplementedError
 
 
@@ -27,7 +27,7 @@ class LimeExplainer(Explainer):
                 random_state=self.seed)
 
     def explain(self, instance, budget):
-        exp, loss = self.explainer.explain_instance(
+        exp = self.explainer.explain_instance(
                 data_row=instance,
                 predict_fn=self.model.predict_proba,
                 num_features=budget)
@@ -36,7 +36,7 @@ class LimeExplainer(Explainer):
         feats = []
         for feat_idx, importance in feature_pairs:
             feats.append(self.feature_names[feat_idx])
-        return feats, float(loss)
+        return feats
 
 
 class ShapExplainer(Explainer):
@@ -59,7 +59,7 @@ class ShapExplainer(Explainer):
                 reverse=True
         )
         feats, _ = zip(*pairs[:budget])
-        return feats, -1
+        return feats
 
 
 class ShapZerosExplainer(Explainer):
@@ -82,7 +82,7 @@ class ShapZerosExplainer(Explainer):
                 reverse=True
         )
         feats, _ = zip(*pairs[:budget])
-        return feats, -1
+        return feats
 
 
 class ShapMedianExplainer(Explainer):
@@ -105,7 +105,7 @@ class ShapMedianExplainer(Explainer):
                 reverse=True
         )
         feats, _ = zip(*pairs[:budget])
-        return feats, -1
+        return feats
 
 
 class GreedyExplainer(Explainer):
@@ -128,7 +128,7 @@ class GreedyExplainer(Explainer):
                 reverse=True
         )
         feats, _ = zip(*pairs[:budget])
-        return feats, -1
+        return feats
 
 class RandomExplainer(Explainer):
     def __init__(self, model, training_data, feature_names, seed):
@@ -136,7 +136,7 @@ class RandomExplainer(Explainer):
                 feature_names, seed)
 
     def explain(self, instance, budget):
-        return np.random.choice(self.feature_names, budget), -1
+        return np.random.choice(self.feature_names, budget)
 
 
 class LogisticExplainer(Explainer):
@@ -144,12 +144,39 @@ class LogisticExplainer(Explainer):
         super(LogisticExplainer, self).__init__(model, training_data,
                 feature_names, seed)
 
-    def explain(self, instance, budget):
+    def explain(self, instance, budget, p=False):
+        # Pair feature names with importances and sort
+        coef = self.model.coef_[0]
+        importances = np.multiply(coef, instance)
+
         pairs = sorted(
-            zip(self.feature_names, self.model.coef_[0]),
+            zip(self.feature_names, importances),
             key = lambda x : abs(x[1]),
             reverse = True
         )
-        feats, _ = zip(*pairs[:budget])
-        return feats, -1
+        if p: print(pairs[:10])
 
+        # Return top feature names
+        feats, _ = zip(*pairs[:budget])
+        return feats
+
+
+class TreeExplainer(Explainer):
+    def __init__(self, model, training_data, feature_names, seed):
+        super(DecisionTreeExplainer, self).__init__(model, training_data,
+                feature_names, seed)
+
+    def explain(self, instance, budget, p=False):
+        # Pair feature names with importances and sort
+        coef = self.model.feature_importances_
+        importances = np.multiply(coef, instance)
+        pairs = sorted(
+            zip(self.feature_names, importances),
+            key = lambda x : abs(x[1]),
+            reverse = True
+        )
+        if p: print(pairs[:10])
+
+        # Return top feature names
+        feats, _ = zip(*pairs[:budget])
+        return feats

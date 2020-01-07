@@ -1,15 +1,10 @@
+# This module is to test if biasing the dataset results in a biased model (as we
+# would hope). We test this by biasing the dataset, training models on both the
+# biased and unbiased versions of the dataset and checking whether the models
+# trained on the biased version have significantly altered performance.
+
 import utils
 import biases
-from explainers import(
-        LimeExplainer,
-        ShapExplainer,
-        ShapZerosExplainer,
-        ShapMedianExplainer,
-        GreedyExplainer,
-        LogisticExplainer,
-        TreeExplainer,
-        RandomExplainer,
-)
 
 import os
 import sys
@@ -20,6 +15,9 @@ import sklearn
 import argparse
 import numpy as np
 import pandas as pd
+
+import matplotlib
+matplotlib.use('Agg') # Must be before importing matplotlib.pyplot (ssh only)
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
@@ -39,33 +37,23 @@ from sklearn.utils import resample
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
 
 global args                     # Arguments from cmd line
-TEST_NAME = 'budget_test'       # Name of this test
+TEST_NAME = 'bias_test'         # Name of this test
 LOG_PATH = 'logs'               # Top level directory for log files
-LOGGING_ENABLED = True          # Save logs for this run if true
 POOL_SIZE = 10                  # How many workers to spawn (one per seed)
 TRAIN_SIZE = 0.9                # Train split ratio (including dev)
-MIN_OCCURANCE = 0.10            # Min occurance for n-grams to be included
+MIN_OCCURANCE = 0.20            # Min occurance for n-grams to be included
 MAX_OCCURANCE = 0.50            # Max occurance for n-grams to be included
-MAX_BUDGET = 5                  # Upper bound of budget to test explainers
-N_SAMPLES = 50                  # Number of samples to evaluate each exapliner
+LOGGING_ENABLED = True          # Save logs for this run if true
 
 # Mapping of model names to model objects
 MODELS = {
     # 'mlp': MLPClassifier(),   # cannot use sample weights
-    'dt': DecisionTreeClassifier(),
     'logistic': LogisticRegression(solver='lbfgs'),
-    'rf': RandomForestClassifier(n_estimators=50)
-}
-
-# The set of explainers to test
-EXPLAINERS = {
-        'Random': RandomExplainer,
-        'Greedy': GreedyExplainer,
-        'LIME': LimeExplainer,
-        'SHAP(kmeans)': ShapExplainer,
+    'rf': RandomForestClassifier(n_estimators=50),
+    'dt': DecisionTreeClassifier(max_depth=3)
 }
 
 
@@ -81,6 +69,7 @@ def run_seed(seed):
     # Set metadata in runlog
     runlog = {}
     runlog['test_name'] = TEST_NAME
+    runlog['bias_len'] = args.bias_length
     runlog['seed'] = seed
 
     print('\nRunning SEED = {} ------------------------------'.format(seed))
@@ -95,7 +84,7 @@ def run_seed(seed):
     bias_obj = biases.ComplexBias(
             reviews_train,
             labels_train,
-            args.bias_length,
+            runlog['bias_len'],
             MIN_OCCURANCE,
             MAX_OCCURANCE,
             runlog
@@ -129,7 +118,7 @@ def run_seed(seed):
     # Resampling dataset #######################################################
     train_df = utils.resample(train_df, feature_names)
 
-    # Training biased model ####################################################
+    # Training unbiased and biased model #######################################
     model_orig, model_bias = utils.train_models(
             args.model,
             MODELS,
@@ -137,80 +126,36 @@ def run_seed(seed):
             runlog
     )
 
+    # Evaluate both models on biased region R and ~R ###########################
     utils.evaluate_models(model_orig, model_bias, test_df, runlog)
 
-    # Get data points to test explainer on #####################################
-
-    R = train_df[ train_df['biased'] ]
-    # DEBUG testing intersections of R and D
-    # Dpos = train_df['label_orig'] == bias_obj.bias_label
-    # R_diff_Dpos = train_df[ (train_df['biased']) & (~Dpos) ]
-    # R_union_Dpos = train_df[ (train_df['biased']) & (Dpos) ]
-    explain = R
-    print('\t\tNUM_EXPLAIN = {}'.format(len(explain)))
-
-    drop_cols = ['label_orig', 'label_bias', 'biased']
-    X_explain = explain.drop(drop_cols, axis=1).values
-    n_samples = min(N_SAMPLES, len(X_explain))
-    runlog['n_samples'] = n_samples
-    print('\t\tNUM_SAMPLES = {}'.format(n_samples))
-
-    # Handle interpretable models by adding their respective explainer
-    if args.model == 'logistic':
-        EXPLAINERS['Ground Truth'] = LogisticExplainer
-    elif args.model == 'dt' or args.model == 'rf':
-        EXPLAINERS['Ground Truth'] = TreeExplainer
-
-    for name in EXPLAINERS:
-        runlog['explainer'] = name
-
-        print('\tEXPLAINER = {}'.format(name))
-
-        explainer = EXPLAINERS[name](
-                model_bias,
-                X_train,
-                feature_names,
-                seed
-        )
-
-        for budget in range(1, MAX_BUDGET + 1):
-            runlog['budget'] = budget
-
-            tp_error = 0
-            fn_error = 0
-            recall_sum = 0
-
-            for i in range(n_samples):
-                instance = X_explain[i]
-                top_feats = explainer.explain(instance, budget)
-
-                recall = 0
-                for word in bias_obj.bias_words:
-                    if word in top_feats:
-                        recall += 1
-                recall /= args.bias_length
-                # DEBUG testing ground truth explainer, print when fails
-                # if budget >= runlog['bias_len'] and recall < 1.0:
-                #     explainer.explain(instance, budget, p=True)
-                recall_sum += recall
-
-            # Compute faithfulness w/ recall
-            recall = recall_sum / n_samples
-            # DEBUG: test where budget 2 is failing
-            runlog['recall'] = recall
-            print('\t\tAVG_RECALL   = {:.4f}'.format(recall))
-
-            if LOGGING_ENABLED:
-                filename = '{:s}_{:d}_{:03d}_{:02d}.json'.format(
-                        name, args.bias_length, seed, budget)
-                utils.save_log(LOG_PATH, filename, runlog)
-
+    print('Plotting biased decision tree...')
+    importances = sorted(
+            list(zip(feature_names, model_bias.feature_importances_)),
+            key=lambda x: x[1],
+            reverse=True
+    )
+    print('\tBIAS_WORDS = {}'.format(bias_obj.bias_words))
+    print('\tIMPORTANCES= {}'.format(importances[:10]))
+    fig = plt.gcf()
+    fig.set_size_inches(150, 100)
+    ax = plt.gca()
+    plot_tree(
+            decision_tree=model_bias,
+            feature_names=feature_names,
+            filled=True,
+            ax=ax
+    )
+    filename = 'decision_tree_{}.png'.format(seed)
+    print('Saving tree plot to: {}'.format(filename))
+    plt.savefig(filename, bbox_inches='tight')
 
 
 def setup_argparse():
-    desc = 'This script is meant to compare multiple explainers\' ability to' \
-           'recover bias that we have systematically introduced to models.'
-    parser = argparse.ArgumentParser(description=desc)
+    parser = argparse.ArgumentParser(
+            description=('This script is meant to show that we can reliably ' \
+                         'introduce bias in a dataset, and the model that we '\
+                         'train on this dataset.'))
     parser.add_argument(
             'dataset',
             type=str,
@@ -220,7 +165,7 @@ def setup_argparse():
             'model',
             type=str,
             metavar='MODEL',
-            help=' | '.join(list(MODELS.keys())))
+            help='Model type, one of: {}'.format(list(MODELS.keys())))
     parser.add_argument(
             'seed_low',
             type=int,
@@ -234,18 +179,19 @@ def setup_argparse():
     parser.add_argument(
             'bias_length',
             type=int,
-            metavar='BIAS_LENGTH',
+            metavar='BIAS_LEN',
             help='Number of features to include in bias')
     parser.add_argument(
             '--log-dir',
             type=str,
             metavar='LOG_DIR',
             default=LOG_PATH,
-            help='Log file directory (default = {})'.format(LOG_PATH))
+            help='Directory to save JSON log files ' \
+                 '(default = {})'.format(LOG_PATH))
     parser.add_argument(
             '--quiet',
             action='store_true',
-            help='Do not print out information while running')
+            help='Do not print out any information while running')
 
     # Check args
     args = parser.parse_args()

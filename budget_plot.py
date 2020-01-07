@@ -4,6 +4,7 @@ import argparse
 import matplotlib
 import pandas as pd
 import seaborn as sns
+matplotlib.use('Agg') # Must be before importing matplotlib.pyplot (ssh only)
 import matplotlib.pyplot as plt
 
 
@@ -12,13 +13,18 @@ columns = [
     'Seed',
     'Dataset',
     'Model Type',
+    'Bias Length',
     'Explainer',
     'Budget',
     'Recall',
 ]
 
-font = {'family' : 'DejaVu Sans', 'weight' : 'bold', 'size'   : 22}
+font = {
+    'weight' : 'bold',
+    'size'   : 20
+}
 matplotlib.rc('font', **font)
+sns.set_style('whitegrid')
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description=
@@ -45,6 +51,7 @@ def log_to_df(log_data):
             log_data['seed'],
             log_data['dataset'],
             log_data['model_type'],
+            log_data['bias_len'],
             log_data['explainer'],
             log_data['budget'],
             log_data['recall'],
@@ -58,8 +65,6 @@ if __name__ == '__main__':
 
     # This is the master df that will be plotted, log files will be added
     master_df = pd.DataFrame(columns=columns)
-
-    # recursively search for log files
     print('Loading log files...')
     for root, _, files in os.walk(args.dir):
         for f in files:
@@ -73,46 +78,69 @@ if __name__ == '__main__':
                 new_df_rows = log_to_df(data)
                 master_df = master_df.append(new_df_rows, ignore_index=True)
 
-    explainers = [
-            'Ground Truth',
+    # Concrete order of explaiers on the plot, only thing that is important is
+    # that ground truth goes at the bottom, since not every model has this
+    # explainer
+    explainers_order = [
             'Greedy',
             'LIME',
             'SHAP(zeros)',
             'SHAP(kmeans)',
             'SHAP(median)',
-            'Random'
+            'Random',
+            'Ground Truth',
     ]
-    data_exp = master_df['Explainer'].unique()
-    explainers = [x for x in explainers if x in data_exp]
+    explainers = []
+    unique = master_df['Explainer'].unique()
+    for x in explainers_order:
+        if x in unique:
+            explainers.append(x)
+    lengths = master_df['Bias Length'].unique()
+    print('Explainers:', explainers)
+    print('Bias Lens: ', sorted(lengths))
     hue_order = explainers
-    master_df = master_df.loc[master_df['Explainer'].isin(explainers)]
+    # master_df = master_df.loc[master_df['Explainer'].isin(explainers)]
 
     # Plot the master dataframe
+    f, axes = plt.subplots(1, len(lengths), figsize=(7 * len(lengths) + 2, 7),
+            sharey=True)
+    axes = [axes] if len(lengths) == 1 else axes
     print('Building plot...')
-    ax = sns.lineplot(
-            data=master_df,
-            x='Budget',
-            y='Recall',
-            hue='Explainer',
-            hue_order=hue_order,
-            err_style='bars',
-            markers=True,
-            dashes=False,
-            style='Explainer',
+    for i, length in enumerate(sorted(lengths)):
+        data = master_df[ master_df['Bias Length'] == length ]
+        ax = sns.lineplot(
+                data=data,
+                x='Budget',
+                y='Recall',
+                hue='Explainer',
+                hue_order=hue_order,
+                style='Explainer',
+                style_order=hue_order,
+                err_style='bars',
+                markers=True,
+                dashes=False,
+                ax=axes[i],
+        )
+        ax.set_title('Bias Length = {}'.format(length))
+        ax.get_legend().remove()
+
+    handles, labels = axes[-1].get_legend_handles_labels()
+    axes[-1].legend(
+        handles[1:],
+        labels[1:],
+        frameon=True,
+        bbox_to_anchor=(1.05, 1.00),
+        loc='upper left',
+        ncol=1
     )
+    plt.ylim(0, 1.1)
 
-    xmin = master_df['Budget'].min() - 1
-    xmax = master_df['Budget'].max() + 1
-
-    # plt.ylim(bottom=0, top=1.1)
-    # plt.xlim(left=xmin, right=xmax)
-    # plt.tight_layout()
-    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    # plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
     # Save
     print('Saving plot to: {}'.format(args.output))
     plt.savefig(args.output, bbox_inches='tight')
 
     # Viz
+    # plt.tight_layout(rect=[0,0,1.1,1])
     # plt.show()
-

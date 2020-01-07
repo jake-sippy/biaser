@@ -8,12 +8,27 @@ from urllib.request import urlopen
 from sklearn.datasets import fetch_20newsgroups
 
 
+# Load the IMDb Reviews dataset
 def load_imdb(path):
     url = 'http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz'
     response = urlopen(url)
-    tar = tarfile.open(fileobj=response, mode="r|gz")
+    memfile = io.BytesIO(response.read())
+    tar = tarfile.open(fileobj=memfile, mode="r:gz")
+    reviews = []
+    labels = []
     for member in tar.getmembers():
-        print(tar.extract(member))
+        if member.isfile():
+            fname = member.name.split('/')[-1]
+            if fname.endswith('.txt') and fname[0].isdigit():
+                rating = int(fname.split('.txt')[0].split('_')[-1])
+                if rating > 0:
+                    reviews.append(tar.extractfile(member).read())
+                    labels.append(1 if rating > 5 else 0)
+
+    df = pd.DataFrame(data=[i for i in zip(reviews, labels)])
+    filename = os.path.join(path, 'imdb.csv')
+    df.to_csv(filename, index=False, header=False)
+
 
 # Load the Amazon Reviews dataset
 def load_amazon(path):
@@ -62,6 +77,6 @@ if __name__ == '__main__':
         os.mkdir(directory)
 
     # Load datasets
-    # load_imdb(directory)
-    load_amazon(directory)
-    load_newsgroups(directory)
+    load_imdb(directory)
+    # load_amazon(directory)
+    # load_newsgroups(directory)
