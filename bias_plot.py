@@ -125,8 +125,8 @@ if __name__ == '__main__':
 
     handles, labels = axes[-1].get_legend_handles_labels()
     axes[-1].legend(
-        handles[1:],
-        labels[1:],
+        handles,
+        labels,
         frameon=True,
         bbox_to_anchor=(1.05, 1.00),
         loc='upper left',

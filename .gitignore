@@ -1,6 +1,7 @@
 __pycache__/
 aclImdb/
 datasets/
+saved_models/
 lime/
 shap/
 test*

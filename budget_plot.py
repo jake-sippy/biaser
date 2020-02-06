@@ -39,8 +39,15 @@ def setup_argparse():
             type=str,
             metavar='output',
             required=False,
-            default='plot.png',
+            default='plot.svg',
             help='The path to output the plot to')
+    parser.add_argument(
+            '-b', '--budget',
+            type=int,
+            metavar='budget',
+            required=False,
+            default=10,
+            help='Upper bound of budget to plot')
     return parser
 
 
@@ -75,6 +82,8 @@ if __name__ == '__main__':
                 except:
                     print(path)
                     raise ValueError
+                if data['budget'] > args.budget:
+                    continue
                 new_df_rows = log_to_df(data)
                 master_df = master_df.append(new_df_rows, ignore_index=True)
 
@@ -84,10 +93,8 @@ if __name__ == '__main__':
     explainers_order = [
             'Greedy',
             'LIME',
-            'SHAP(zeros)',
-            'SHAP(kmeans)',
-            'SHAP(median)',
             'Random',
+            'SHAP',
             'Ground Truth',
     ]
     explainers = []
@@ -95,6 +102,11 @@ if __name__ == '__main__':
     for x in explainers_order:
         if x in unique:
             explainers.append(x)
+
+    for x in unique:
+        if not x in explainers:
+            print('WARNING: {} found, but not given order in plot'.format(x))
+
     lengths = master_df['Bias Length'].unique()
     print('Explainers:', explainers)
     print('Bias Lens: ', sorted(lengths))
@@ -120,6 +132,8 @@ if __name__ == '__main__':
                 markers=True,
                 dashes=False,
                 ax=axes[i],
+                ms=10,
+                alpha=0.75
         )
         ax.set_title('Bias Length = {}'.format(length))
         ax.get_legend().remove()
@@ -139,7 +153,7 @@ if __name__ == '__main__':
 
     # Save
     print('Saving plot to: {}'.format(args.output))
-    plt.savefig(args.output, bbox_inches='tight')
+    plt.savefig(args.output, bbox_inches='tight', format='svg')
 
     # Viz
     # plt.tight_layout(rect=[0,0,1.1,1])
