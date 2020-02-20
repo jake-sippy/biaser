@@ -30,8 +30,9 @@ def load_imdb(path):
     df.to_csv(filename, index=False, header=False)
 
 
-# Load the Amazon Reviews dataset
+# Load the Amazon Cell Phones and Accessories Reviews dataset
 def load_amazon(path):
+    print('Loading the Amazon Cell Phones and Accessories Reviews dataset...')
     url = 'http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/' \
           'reviews_Cell_Phones_and_Accessories_5.json.gz'
     response = urlopen(url)
@@ -46,6 +47,23 @@ def load_amazon(path):
     dataset.to_csv(filename, index=False, header=False,
             columns=['reviewText', 'overall'])
 
+
+# Load the Amazon Home and Kitchen Reviews dataset
+def load_amazon_home(path):
+    print('Loading the Amazon Home and Kitchen Reviews dataset...')
+    url = 'http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/' \
+          'reviews_Home_and_Kitchen_5.json.gz'
+    response = urlopen(url)
+    data = response.read()
+    data = gzip.decompress(data)
+    dataset = pd.read_json(data, lines=True)
+    dataset = dataset[dataset['overall'] != 3]
+    dataset['overall'] = dataset['overall'].map(
+            {1:0, 2:0, 4:1, 5:1}
+    )
+    filename = os.path.join(path, 'amazon_home.csv')
+    dataset.to_csv(filename, index=False, header=False,
+            columns=['reviewText', 'overall'])
 
 # Load the 20 Newsgroups dataset
 def load_newsgroups(path):
@@ -77,6 +95,7 @@ if __name__ == '__main__':
         os.mkdir(directory)
 
     # Load datasets
-    load_imdb(directory)
+    # load_imdb(directory)
     # load_amazon(directory)
+    load_amazon_home(directory)
     # load_newsgroups(directory)
