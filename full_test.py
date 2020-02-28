@@ -146,6 +146,7 @@ EXPLAINERS = {
 
 def run_seed(arguments):
     seed = arguments['seed']
+    dataset = arguments['dataset']
     model_type = arguments['model_type']
     bias_length = arguments['bias_length']
 
@@ -165,7 +166,7 @@ def run_seed(arguments):
     reviews_train, \
     reviews_test,  \
     labels_train,  \
-    labels_test = utils.load_dataset(args.dataset, TRAIN_SIZE, runlog,
+    labels_test = utils.load_dataset(dataset, TRAIN_SIZE, runlog,
             quiet=True)
 
     # Create bias #############################################################
@@ -249,11 +250,11 @@ def setup_args():
     #         default='budget_test',
     #         metavar='TEST',
     #         help=' | '.join(TESTS))
-    parser.add_argument(
-            'dataset',
-            type=str,
-            metavar='DATASET',
-            help='CSV dataset to bias')
+    # parser.add_argument(
+    #         'dataset',
+    #         type=str,
+    #         metavar='DATASET',
+    #         help='CSV dataset to bias')
     # parser.add_argument(
     #         'model',
     #         type=str,
@@ -269,11 +270,11 @@ def setup_args():
             type=int,
             metavar='SEED_HIGH',
             help='Higher bound of seeds to loop over (exclusive)')
-    # parser.add_argument(
-    #         'bias_length',
-    #         type=int,
-    #         metavar='BIAS_LENGTH',
-    #         help='Number of features to include in bias')
+    parser.add_argument(
+            'n_workers',
+            type=int,
+            metavar='N_WORKERS',
+            help='Number of workers to spawn')
     parser.add_argument(
             '--log-dir',
             type=str,
@@ -292,10 +293,6 @@ def setup_args():
             '--single-thread',
             action='store_true',
             help='Force single-thread for multiple seeds')
-    parser.add_argument(
-            '--full-run',
-            action='store_true',
-            help='Run a full test suite, datasets and models and seeds')
 
     args = parser.parse_args()
     bad_seed_msg = 'No seeds in [{}, {})'.format(args.seed_low, args.seed_high)
@@ -309,25 +306,30 @@ if __name__ == '__main__':
     args = setup_args()
     if args.quiet: sys.stdout = open(os.devnull, 'w')
     
-    pool_size = 1 if args.single_thread else POOL_SIZE
+    pool_size = args.n_workers
 
     seeds = range(args.seed_low, args.seed_high)
     args.test_type = 'budget_test'
 
     arguments = []
-    for model_type in ['logistic', 'dt', 'rf']:
-        for seed in range(args.seed_low, args.seed_high):
-            arguments.append({
-                'seed': seed,
-                'model_type': model_type,
-                'bias_length': 1
-            })
+    DATA_DIR = 'datasets'
+    for f in os.listdir(DATA_DIR):
+        dataset = os.path.join(DATA_DIR, f)
+        for model_type in ['logistic', 'dt', 'rf']:
+            for seed in range(args.seed_low, args.seed_high):
+                arguments.append({
+                    'seed': seed,
+                    'dataset': dataset,
+                    'model_type': model_type,
+                    'bias_length': 1
+                })
 
-            arguments.append({
-                'seed': seed,
-                'model_type': model_type,
-                'bias_length': 2
-            })
+                arguments.append({
+                    'seed': seed,
+                    'dataset': dataset,
+                    'model_type': model_type,
+                    'bias_length': 2
+                })
     pool = Pool(pool_size, maxtasksperchild=1)
     list(tqdm.tqdm(pool.imap(run_seed, arguments, chunksize=1),
         total=len(arguments)))
