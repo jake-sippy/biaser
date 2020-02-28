@@ -138,9 +138,9 @@ MODELS = {
 
 EXPLAINERS = {
     'Random': RandomExplainer,
-    # 'Greedy': GreedyExplainer,
-    # 'LIME': LimeExplainer,
-    # 'SHAP': ShapExplainer,
+    'Greedy': GreedyExplainer,
+    'LIME': LimeExplainer,
+    'SHAP': ShapExplainer,
 }
 
 
