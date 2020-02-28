@@ -105,9 +105,9 @@ if __name__ == '__main__':
         os.mkdir(directory)
 
     # Load datasets
-    # load_imdb(directory)
-    # load_amazon_cell(directory)
-    # load_amazon_home(directory)
-    # load_newsgroups_atheism(directory)
+    load_imdb(directory)
+    load_amazon_cell(directory)
+    load_amazon_home(directory)
+    load_newsgroups_atheism(directory)
     load_newsgroups_baseball(directory)
     load_newsgroups_ibm(directory)

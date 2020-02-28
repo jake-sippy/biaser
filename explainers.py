@@ -26,8 +26,8 @@ class Explainer:
         self.seed = seed
 
     def explain(self, instance, budget):
-        # Return a list of the most important features (by name) in decreasing
-        # order
+        # Return a list of tuples: (feature, importance). Sorted in decreasing
+        # order of importance
         raise NotImplementedError
 
 
@@ -50,15 +50,15 @@ class LimeExplainer(Explainer):
         feature_pairs = exp.as_map()[1]
         feats = []
         for feat_idx, importance in feature_pairs:
-            feats.append(self.feature_names[feat_idx])
-        return feats
+            feats.append( (self.feature_names[feat_idx], importance) )
+        return feats[:budget]
 
 
 class ShapExplainer(Explainer):
     def __init__(self, model, training_data, seed):
         super(ShapExplainer, self).__init__(model, training_data, seed)
         data = self.preprocessor.transform(training_data)
-        background_data = kmeans(data, 100)
+        background_data = kmeans(data, 10)
         self.explainer = KernelExplainer(
                 model=self.model.predict_proba,
                 data=background_data)
@@ -74,8 +74,7 @@ class ShapExplainer(Explainer):
                 key=lambda x : abs(x[1]),
                 reverse=True
         )
-        feats, _ = zip(*pairs[:budget])
-        return feats
+        return pairs[:budget]
 
 
 class GreedyExplainer(Explainer):
@@ -84,7 +83,7 @@ class GreedyExplainer(Explainer):
 
     def explain(self, instance, budget):
         instance = self.preprocessor.transform([instance])
-        inst = instance.copy().reshape(1, -1)
+        inst = instance.reshape(1, -1)
         base = self.model.predict_proba(inst)[0, 1]
         values = []
         for i, val in enumerate(inst[0]):
@@ -92,14 +91,13 @@ class GreedyExplainer(Explainer):
             delta = self.model.predict_proba(inst)[0, 1]
             values.append(base - delta)
             inst[0, i] = val
+
         pairs = sorted(
                 zip(self.feature_names, values),
                 key=lambda x: abs(x[1]),
                 reverse=True
         )
-
-        feats, _ = zip(*pairs[:budget])
-        return feats
+        return pairs[:budget]
 
 
 class RandomExplainer(Explainer):
@@ -107,7 +105,9 @@ class RandomExplainer(Explainer):
         super(RandomExplainer, self).__init__(model, training_data, seed)
 
     def explain(self, instance, budget):
-        return np.random.choice(self.feature_names, budget)
+        # Not generating random importances for now, just setting all to 0
+        features = np.random.choice(self.feature_names, budget)
+        return [(feat, 0.0) for feat in features]
 
 
 class LogisticExplainer(Explainer):
@@ -126,10 +126,7 @@ class LogisticExplainer(Explainer):
             reverse = True
         )
         if p: print(pairs[:10])
-
-        # Return top feature names
-        feats, _ = zip(*pairs[:budget])
-        return feats
+        return pairs[:budget]
 
 
 class TreeExplainer(Explainer):
@@ -138,6 +135,7 @@ class TreeExplainer(Explainer):
 
     def explain(self, instance, budget, p=False):
         # Pair feature names with importances and sort
+        instance = self.preprocessor.transform([instance])[0]
         coef = self.model.feature_importances_
         importances = np.multiply(coef, instance)
         pairs = sorted(
@@ -146,10 +144,7 @@ class TreeExplainer(Explainer):
             reverse = True
         )
         if p: print(pairs[:10])
-
-        # Return top feature names
-        feats, _ = zip(*pairs[:budget])
-        return feats
+        return pairs[:budget]
 
 
 # TEXT EXPLAINERS ##############################################################
@@ -220,7 +215,6 @@ class ShapTextExplainer(Explainer):
         model = model.steps[-1][1].module_
         background_data = self.preprocessor.transform(training_data[:100])
         background_data = torch.Tensor(background_data).long().to('cuda')
-        print(background_data)
         self.explainer = DeepExplainer(model, background_data)
 
     def explain(self, instance, budget):

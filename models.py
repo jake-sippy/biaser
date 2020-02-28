@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
 from skorch import NeuralNetClassifier
 
 class WeightedNeuralNet(NeuralNetClassifier):
@@ -20,20 +19,15 @@ class WeightedNeuralNet(NeuralNetClassifier):
         return loss_reduced
 
 
-class DNN(nn.Module):
-    def __init__(self, n_embedding, n_output=2, n_hidden=100):
-        super(DNN, self).__init__()
-        self.n_embedding = n_embedding
+class MLP(nn.Module):
+    def __init__(self, n_input, n_output=2, n_hidden=100):
+        super(MLP, self).__init__()
         self.n_output = n_output
         self.n_hidden = n_hidden
+        self.fc1 = nn.Linear(n_input, n_hidden)
         self.fc2 = nn.Linear(n_hidden, n_output)
 
-    def forward(self, data, sample_weight=None):
-        # Lazy init of the first linear layer. This is more generalizable, as we
-        # change the preprocessing the vector length can change
-        if not hasattr(self, 'fc1'):
-            _, self.n_input = data.shape
-            self.fc1 = nn.Linear(self.n_input, self.n_hidden).to(data.device)
+    def forward(self, data, sample_weight=None, biased=None):
         data = data.float()
         data = self.fc1(data)
         data = F.relu(data)
