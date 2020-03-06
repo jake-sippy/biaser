@@ -144,11 +144,11 @@ def run_seed(arguments):
     model_type = arguments['model_type']
     bias_length = arguments['bias_length']
     
-    explainer = {
-        'Random': RandomExplainer,
-        'Greedy': GreedyExplainer,
-        'LIME': LimeExplainer,
-        'SHAP': ShapExplainer,
+    explainers = {
+        # 'Random': RandomExplainer,
+        # 'Greedy': GreedyExplainer,
+        # 'LIME': LimeExplainer,
+        # 'SHAP': ShapExplainer,
     }
 
     runlog = {}
@@ -185,8 +185,8 @@ def run_seed(arguments):
     test_df = bias_obj.build_df(reviews_test, labels_test)
 
     # Training biased model ####################################################
-    model_type = MODELS[model_type]
-    model_orig, model_bias = utils.train_models(model_type, train_df,
+    model = MODELS[model_type]
+    model_orig, model_bias = utils.train_models(model, train_df,
             runlog, quiet=True)
 
     # Standard evaluation of both models on test set ###########################
@@ -298,7 +298,7 @@ if __name__ == '__main__':
     DATA_DIR = 'datasets'
     for f in os.listdir(DATA_DIR):
         dataset = os.path.join(DATA_DIR, f)
-        for model_type in ['mlp']:
+        for model_type in ['logistic', 'dt', 'rf']:
             for seed in range(args.seed_low, args.seed_high):
                 arguments.append({
                     'seed': seed,
