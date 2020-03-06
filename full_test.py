@@ -44,7 +44,6 @@ from explainers import(
         RandomExplainer,
 )
 
-
 # GLOBALS ######################################################################
 
 global args                     # Arguments from cmd line
@@ -136,12 +135,7 @@ MODELS = {
 }
 
 
-EXPLAINERS = {
-    'Random': RandomExplainer,
-    'Greedy': GreedyExplainer,
-    'LIME': LimeExplainer,
-    'SHAP': ShapExplainer,
-}
+
 
 
 def run_seed(arguments):
@@ -149,6 +143,13 @@ def run_seed(arguments):
     dataset = arguments['dataset']
     model_type = arguments['model_type']
     bias_length = arguments['bias_length']
+    
+    explainer = {
+        'Random': RandomExplainer,
+        'Greedy': GreedyExplainer,
+        'LIME': LimeExplainer,
+        'SHAP': ShapExplainer,
+    }
 
     runlog = {}
     runlog['seed']       = seed
@@ -208,14 +209,14 @@ def run_seed(arguments):
 
     # Handle interpretable models by adding their respective explainer #########
     if model_type == 'logistic':
-        EXPLAINERS['Ground Truth'] = LogisticExplainer
+        explainers['Ground Truth'] = LogisticExplainer
     elif model_type == 'dt':
-        EXPLAINERS['Ground Truth'] = TreeExplainer
+        explainers['Ground Truth'] = TreeExplainer
 
     # Test recall of explainers ################################################
-    for name in EXPLAINERS:
+    for name in explainers:
         runlog['explainer'] = name
-        explainer = EXPLAINERS[name](model_bias, reviews_train, seed)
+        explainer = explainers[name](model_bias, reviews_train, seed)
         for budget in range(1, MAX_BUDGET + 1):
             runlog['budget'] = budget
             avg_recall = 0
@@ -244,22 +245,6 @@ def setup_args():
     desc = 'This script compares multiple explainers\' ability to' \
            'recover bias that we have trained into models.'
     parser = argparse.ArgumentParser(description=desc)
-    # parser.add_argument(
-    #         'test_type',
-    #         type=str,
-    #         default='budget_test',
-    #         metavar='TEST',
-    #         help=' | '.join(TESTS))
-    # parser.add_argument(
-    #         'dataset',
-    #         type=str,
-    #         metavar='DATASET',
-    #         help='CSV dataset to bias')
-    # parser.add_argument(
-    #         'model',
-    #         type=str,
-    #         metavar='MODEL',
-    #         help=' | '.join(list(MODELS.keys())))
     parser.add_argument(
             'seed_low',
             type=int,
@@ -296,16 +281,14 @@ def setup_args():
 
     args = parser.parse_args()
     bad_seed_msg = 'No seeds in [{}, {})'.format(args.seed_low, args.seed_high)
-    # bad_model_msg = 'Unknown model: {}'.format(model_type)
     assert (args.seed_low < args.seed_high), bad_seed_msg
-    # assert model_type in MODELS, bad_model_msg
     return args
 
 
 if __name__ == '__main__':
     args = setup_args()
     if args.quiet: sys.stdout = open(os.devnull, 'w')
-    
+
     pool_size = args.n_workers
 
     seeds = range(args.seed_low, args.seed_high)
@@ -315,7 +298,7 @@ if __name__ == '__main__':
     DATA_DIR = 'datasets'
     for f in os.listdir(DATA_DIR):
         dataset = os.path.join(DATA_DIR, f)
-        for model_type in ['logistic', 'dt', 'rf']:
+        for model_type in ['mlp']:
             for seed in range(args.seed_low, args.seed_high):
                 arguments.append({
                     'seed': seed,
