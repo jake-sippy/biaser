@@ -145,10 +145,10 @@ def run_seed(arguments):
     bias_length = arguments['bias_length']
     
     explainers = {
-        # 'Random': RandomExplainer,
-        # 'Greedy': GreedyExplainer,
-        # 'LIME': LimeExplainer,
-        # 'SHAP': ShapExplainer,
+        'Random': RandomExplainer,
+        'Greedy': GreedyExplainer,
+        'LIME': LimeExplainer,
+        'SHAP': ShapExplainer,
     }
 
     runlog = {}
