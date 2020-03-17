@@ -13,12 +13,9 @@ class Bias:
         # return (biased_labels, was_biased)
         raise NotImplemented
 
-    def build_df(self, reviews, labels_orig):
+    def build_df(self, reviews, labels_orig, runlog):
         columns = ['reviews', 'label_orig', 'label_bias', 'biased', 'flipped']
-        try:
-            labels_bias, biased, flipped = self.bias(reviews, labels_orig)
-        except Exception:
-            exit()
+        labels_bias, biased, flipped = self.bias(reviews, labels_orig, runlog)
         data = zip(reviews, labels_orig, labels_bias, biased, flipped)
         return pd.DataFrame(data=data, columns=columns)
 
@@ -35,7 +32,7 @@ class ComplexBias(Bias):
         self.quiet = quiet
 
         # Build vocab that appears > min_df and < max_df
-        if not quiet: print('Creating bias...')
+        if not self.quiet: print('Creating bias...')
         self.vectorizer = CountVectorizer(
                 input='content',
                 encoding='utf-8',
@@ -54,17 +51,18 @@ class ComplexBias(Bias):
         self.vectorizer.fit(reviews)
         self.feature_names = self.vectorizer.get_feature_names()
         runlog['bias_attempts'] = 0
-        _load_bias(runlog)
+        self._load_bias(runlog)
 
     def _load_bias(self, runlog):
         idxs = np.arange(len(self.feature_names))
-        self.bias_idxs = np.random.choice(idxs, bias_len, replace=False)
+        self.bias_idxs = np.random.choice(idxs, self.bias_len, replace=False)
         self.bias_words = [self.feature_names[i] for i in self.bias_idxs]
         runlog['bias_words'] = self.bias_words
-        runlog['bias_len'] = bias_len
+        runlog['bias_len'] = self.bias_len
         runlog['bias_attempts'] += 1
-        if not quiet: print('\tBIAS_WORDS = {}'.format(self.bias_words))
-        unique_labels, counts = np.unique(labels, return_counts=True)
+        if not self.quiet: print('\tBIAS_ATTEMPT = {}'.format(runlog['bias_attempts']))
+        if not self.quiet: print('\tBIAS_WORDS = {}'.format(self.bias_words))
+        unique_labels, counts = np.unique(self.labels, return_counts=True)
         self.bias_label = unique_labels[np.argmin(counts)]
 
     def bias(self, instances, labels, runlog):
@@ -84,12 +82,15 @@ class ComplexBias(Bias):
                 biased.append(False)
                 flipped.append(False)
 
-        if (np.sum(biased) > MIN_BIASED_EXAMPLES) and runlog['bias_attempts'] < 3:
-            self._load_bias(runlog)
-            self.bias(instances, labels, runlog)
-        else:
-            raise TooManyAttemptsError(
-                'Exceded 3 attempts to create bias - not enough samples in R')
+        R_size = np.sum(biased)
+        if R_size < MIN_BIASED_EXAMPLES:
+            if runlog['bias_attempts'] < 3:
+                self._load_bias(runlog)
+                return self.bias(instances, labels, runlog)
+            else:
+                msg = 'Exceded 3 attempts to create bias - R too small'
+                assert False, msg
+                raise TooManyAttemptsError(msg)
 
         return bias_labels, biased, flipped
 
