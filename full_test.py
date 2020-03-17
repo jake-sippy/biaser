@@ -143,7 +143,6 @@ def run_seed(arguments):
     dataset = arguments['dataset']
     model_type = arguments['model_type']
     bias_length = arguments['bias_length']
-
     explainers = {
         'Random': RandomExplainer,
         'Greedy': GreedyExplainer,
@@ -186,8 +185,8 @@ def run_seed(arguments):
     test_df = bias_obj.build_df(reviews_test, labels_test)
 
     # Training biased model ####################################################
-    model_type = MODELS[model_type]
-    model_orig, model_bias = utils.train_models(model_type, train_df,
+    model = MODELS[model_type]
+    model_orig, model_bias = utils.train_models(model, train_df,
             runlog, quiet=True)
 
     # Standard evaluation of both models on test set ###########################
