@@ -1,5 +1,4 @@
 import os
-import utils
 import sys
 import time
 import json
@@ -33,6 +32,7 @@ from sklearn.metrics import (
 
 from skorch import callbacks
 
+import utils
 import biases
 from models import WeightedNeuralNet, MLP, LSTM
 from explainers import(
@@ -168,7 +168,7 @@ def run_seed(arguments):
     reviews_test,  \
     labels_train,  \
     labels_test = utils.load_dataset(dataset, TRAIN_SIZE, runlog,
-            quiet=True)
+            quiet=False)
 
     # Create bias #############################################################
     bias_obj = biases.ComplexBias(
@@ -178,26 +178,27 @@ def run_seed(arguments):
             BIAS_MIN_DF,
             BIAS_MAX_DF,
             runlog,
-            quiet=True
+            quiet=False
     )
 
-    train_df = bias_obj.build_df(reviews_train, labels_train)
-    test_df = bias_obj.build_df(reviews_test, labels_test)
+
+    train_df = bias_obj.build_df(reviews_train, labels_train, runlog)
+    test_df = bias_obj.build_df(reviews_test, labels_test, runlog)
 
     # Training biased model ####################################################
     model = MODELS[model_type]
     model_orig, model_bias = utils.train_models(model, train_df,
-            runlog, quiet=True)
+            runlog, quiet=False)
 
     # Standard evaluation of both models on test set ###########################
     utils.evaluate_models_test(model_orig, model_bias, test_df, runlog,
-            quiet=True)
+            quiet=False)
 
     # Evaluate both models on biased region R and ~R ###########################
-    utils.evaluate_models(model_orig, model_bias, test_df, runlog, quiet=True)
+    utils.evaluate_models(model_orig, model_bias, test_df, runlog, quiet=False)
     if (not args.no_log) and args.test_type == 'bias_test':
         filename = '{0}_{1:04d}.json'.format(runlog['bias_len'], runlog['seed'])
-        utils.save_log(args.log_dir, filename, runlog, quiet=True)
+        utils.save_log(args.log_dir, filename, runlog, quiet=False)
 
     if args.test_type == 'bias_test': return
 
@@ -238,7 +239,7 @@ def run_seed(arguments):
             if (not args.no_log) and args.test_type == 'budget_test':
                 filename = '{:s}_{:d}_{:03d}_{:02d}.json'.format(
                         name, bias_length, seed, budget)
-                utils.save_log(LOG_PATH, filename, runlog, quiet=True)
+                utils.save_log(LOG_PATH, filename, runlog, quiet=False)
 
 
 def setup_args():
@@ -314,8 +315,12 @@ if __name__ == '__main__':
                     'bias_length': 2
                 })
 
-    pool = Pool(pool_size, maxtasksperchild=1)
-    list(tqdm.tqdm(pool.imap(run_seed, arguments, chunksize=1),
-        total=len(arguments)))
-    pool.close()
-    pool.join()
+    if pool_size == 1:
+        for arg in arguments:
+            run_seed(arg)
+    else:
+        pool = Pool(pool_size, maxtasksperchild=1)
+        list(tqdm.tqdm(pool.imap(run_seed, arguments, chunksize=1),
+            total=len(arguments)))
+        pool.close()
+        pool.join()
