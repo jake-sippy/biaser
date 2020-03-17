@@ -143,8 +143,8 @@ def run_seed(arguments):
     dataset = arguments['dataset']
     model_type = arguments['model_type']
     bias_length = arguments['bias_length']
-    
-    explainer = {
+
+    explainers = {
         'Random': RandomExplainer,
         'Greedy': GreedyExplainer,
         'LIME': LimeExplainer,
@@ -158,6 +158,7 @@ def run_seed(arguments):
     runlog['bias_len']   = bias_length
     runlog['min_occur']  = MIN_OCCURANCE
     runlog['max_occur']  = MIN_OCCURANCE
+    runlog['dataset']    = dataset
 
     os.environ['MKL_NUM_THREADS'] = '1'
     torch.set_num_threads(1)
@@ -298,7 +299,7 @@ if __name__ == '__main__':
     DATA_DIR = 'datasets'
     for f in os.listdir(DATA_DIR):
         dataset = os.path.join(DATA_DIR, f)
-        for model_type in ['mlp']:
+        for model_type in ['logistic', 'dt', 'rf']:
             for seed in range(args.seed_low, args.seed_high):
                 arguments.append({
                     'seed': seed,
@@ -313,6 +314,7 @@ if __name__ == '__main__':
                     'model_type': model_type,
                     'bias_length': 2
                 })
+
     pool = Pool(pool_size, maxtasksperchild=1)
     list(tqdm.tqdm(pool.imap(run_seed, arguments, chunksize=1),
         total=len(arguments)))
