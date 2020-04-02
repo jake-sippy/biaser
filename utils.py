@@ -131,28 +131,41 @@ def evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=False):
     y_pred_bias = model_bias.predict(X)
     runlog['orig_test_acc'] = accuracy_score(y_orig, y_pred_orig)
     runlog['bias_test_acc'] = accuracy_score(y_bias, y_pred_bias)
-    runlog['orig_test_class_report'] = classification_report(y_orig, y_pred_orig)
-    runlog['bias_test_class_report'] = classification_report(y_bias, y_pred_bias)
+    runlog['orig_test_f1'] = f1_score(y_orig, y_pred_orig)
+    runlog['bias_test_f1'] = f1_score(y_bias, y_pred_bias)
 
     if not quiet: print('\torig model accuracy:', runlog['orig_test_acc'])
-    if not quiet: print('\torig model classification_report:\n',
-            runlog['orig_test_class_report'])
+    if not quiet: print('\torig model f1:\n', runlog['orig_test_f1'])
     if not quiet: print('\tbias model accuracy:', runlog['bias_test_acc'])
-    if not quiet: print('\tbias model classification_report:\n',
-            runlog['bias_test_class_report'])
+    if not quiet: print('\tbias model f1:\n', runlog['bias_test_f1'])
 
 
-def save_log(log_dir, filename, runlog, quiet=False):
-    log_dir = os.path.join(
+def save_log(log_dir, runlog, quiet=False):
+    filename = '{:s}_{:d}_{:03d}_{:02d}_{:03d}.json'.format(
+            runlog['explainer'], 
+            runlog['bias_len'], 
+            runlog['seed'], 
+            runlog['budget'],
+            runlog['example_id'])
+
+    directory = os.path.join(
             log_dir,
             runlog['test_name'],
             runlog['dataset'],
             runlog['model_type'])
 
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    if runlog['toy']:
+        # Save in 'toy' sub-directory
+        directory = os.path.join(
+                log_dir, 'toy',
+                runlog['test_name'],
+                runlog['dataset'],
+                runlog['model_type'])
 
-    log_path = os.path.join(log_dir, filename)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    log_path = os.path.join(directory, filename)
     if not quiet: print('Writing log to: {}'.format(log_path))
     with open(log_path, 'w') as f:
         json.dump(runlog, f)

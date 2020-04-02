@@ -2,7 +2,90 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.preprocessing import StandardScaler, FunctionTransformer
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from skorch import NeuralNetClassifier
+from skorch import callbacks
+
+
+MIN_OCCURANCE = 0.05            # Min occurance for words to be vectorized
+MAX_OCCURANCE = 1.00            # Max occurance for words to be vectorized
+
+# MLP Features learned through CV
+MLP_MAX_VOCAB = 150
+MLP_N_HIDDEN = 50
+MLP_MAX_EPOCHS = 50
+MLP_LR = 0.01
+
+# Model names to Pipeline lambdas
+pipelines = {
+    'logistic': lambda: Pipeline([
+        ('counts', CountVectorizer(
+            min_df=MIN_OCCURANCE,
+            max_df=MAX_OCCURANCE,
+            binary=True)),
+        ('dense', FunctionTransformer(
+            lambda x: x.toarray(),
+            validate=False,
+            accept_sparse=True)),
+        ('model', LogisticRegression(solver='lbfgs')),
+    ]),
+
+    'rf': lambda: Pipeline([
+        ('counts', CountVectorizer(
+            min_df=MIN_OCCURANCE,
+            max_df=MAX_OCCURANCE,
+            binary=True)),
+        ('dense', FunctionTransformer(
+            lambda x: x.toarray(),
+            validate=False,
+            accept_sparse=True)),
+        ('model', RandomForestClassifier(n_estimators=50)),
+    ]),
+
+    'dt': lambda: Pipeline([
+        ('counts', CountVectorizer(
+            min_df=MIN_OCCURANCE,
+            max_df=MAX_OCCURANCE,
+            binary=True)),
+        ('dense', FunctionTransformer(
+            lambda x: x.toarray(),
+            validate=False,
+            accept_sparse=True)),
+        ('model', DecisionTreeClassifier()),
+    ]),
+
+    'mlp': lambda: Pipeline([
+        ('counts', CountVectorizer(
+            min_df=MIN_OCCURANCE,
+            max_df=MAX_OCCURANCE,
+            max_features=MLP_MAX_VOCAB,
+            binary=True)),
+        ('dense', FunctionTransformer(
+            lambda x: x.toarray(),
+            validate=False,
+            accept_sparse=True)),
+        ('model', WeightedNeuralNet(
+            module=MLP,
+            device='cuda',
+            callbacks=[
+                callbacks.EarlyStopping(
+                    monitor='valid_loss',
+                    threshold=0.001),
+                callbacks.LRScheduler(
+                    policy='ReduceLROnPlateau',
+                    monitor='valid_loss')
+            ],
+            module__n_input=MLP_MAX_VOCAB,
+            max_epochs=MLP_MAX_EPOCHS,
+            lr=MLP_LR))
+    ]),
+}
+
 
 class WeightedNeuralNet(NeuralNetClassifier):
     def __init__(self, *args, criterion__reduction='none', **kwargs):

@@ -1,4 +1,5 @@
 __pycache__/
+.vscode/
 aclImdb/
 datasets/
 saved_models/
@@ -7,8 +8,7 @@ shap/
 test*
 old*
 plots/
-raw_data/
-clean_data/
+data*/
 models/
 *logs/
 vocab/
