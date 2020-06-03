@@ -1,13 +1,32 @@
 import os
 import io
 import gzip
+import zipfile
 import tarfile
 import argparse
 import pandas as pd
 from urllib.request import urlopen
+import requests
 from sklearn.datasets import fetch_20newsgroups
 
 DATASET_DIR = 'datasets'
+
+
+def load_goodreads(path):
+    filename = os.path.join(DATASET_DIR, 'goodreads_reviews_children.json')
+
+    # file_id = '1908GDMdrhDN7sTaI_FelSHxbwcNM1EzR'
+    # url = 'https://drive.google.com/uc?id=' + file_id
+    dataset = pd.read_json(filename, lines=True)
+
+    keep_ratings = [1, 2, 4, 5]
+    dataset = dataset[dataset['rating'].isin(keep_ratings)]
+    dataset['rating'] = dataset['rating'].map( {1:0, 2:0, 4:1, 5:1} ).astype(int)
+
+    # write file
+    filename = os.path.join(path, 'goodreads.csv')
+    dataset.to_csv(filename, index=False, header=False,
+            columns=['review_text', 'rating'])
 
 # Load the IMDb Reviews dataset
 def load_imdb(path):
@@ -105,9 +124,10 @@ if __name__ == '__main__':
         os.mkdir(directory)
 
     # Load datasets
-    load_imdb(directory)
-    load_amazon_cell(directory)
-    load_amazon_home(directory)
-    load_newsgroups_atheism(directory)
-    load_newsgroups_baseball(directory)
-    load_newsgroups_ibm(directory)
+    load_goodreads(directory)
+    # load_imdb(directory)
+    # load_amazon_cell(directory)
+    # load_amazon_home(directory)
+    # load_newsgroups_atheism(directory)
+    # load_newsgroups_baseball(directory)
+    # load_newsgroups_ibm(directory)

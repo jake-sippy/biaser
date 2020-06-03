@@ -19,10 +19,19 @@ real_names = {
     'newsgroups_ibm'      : 'Newsgroup (IBM)',
     'imdb'                : 'IMDb',
     'amazon_cell'         : 'Amazon (Cell Phones)',
-    'amazon_home'         : 'Amazon (Home and Kitchen)',
+    'amazon_home'         : 'Amazon (Home & Kitchen)',
+    'goodreads'           : 'Goodreads',
+    'Aggregate (All)'     : 'Agg. (All)',
+    # 'Aggregate (LIME x 3)': 'Agg. (LIME x 3)',
+    # 'Aggregate (SHAP x 3)': 'Agg. (SHAP x 3)',
+    'Unbiased'            : 'Original',
+    'Biased'              : 'Stained',
+    # 'Aggregate (All)'     : 'All',
+    'Aggregate (LIME x 3)': 'LIME x 3',
+    'Aggregate (SHAP x 3)': 'SHAP x 3',
 }
 
-columns = [
+COLUMNS = [
     'Seed',
     'Dataset',
     'Model',
@@ -63,20 +72,20 @@ def get_arguments():
             metavar='output',
             required=False,
             default='plot.svg',
-            help='The path to output the plot to')            
+            help='The path to output the plot to')
     args = parser.parse_args()
     return args
 
 
 def get_logger(name, level=logging.INFO):
-    # Setup the logging format 
+    # Setup the logging format
     logging.root.setLevel(level)
     log_format = ('[%(levelname)-7s] ' '(%(asctime)s) - ' '%(message)s')
     logging.basicConfig(format=log_format, datefmt='%Y-%m-%d %I:%M:%S %p')
     return logging.getLogger(name)
-    
 
-def load_log_data(log_directory, logger):
+
+def load_log_data(log_directory, plot_type, logger):
     logger.info('Loading logs from: {}'.format(log_directory))
     rows = []
     for root, _, files in os.walk(log_directory):
@@ -84,18 +93,58 @@ def load_log_data(log_directory, logger):
             logger.debug('Parsing: {}'.format(f))
             path = os.path.join(root, f)
             with open(path, 'r') as f:
-                try:
-                    data = json.load(f)
-                    rows.append(_log_to_df(data))
-                except:
-                    logger.error('Failed loading JSON:', path)
-                    exit()
-                
-    df = pd.DataFrame(columns=columns, data=rows)
+                # try:
+                data = json.load(f)
+                if plot_type == 'bias':
+                    rows.extend(_log_to_df_bias(data))
+                else:
+                    rows.append(_log_to_df_budget(data))
+                # except:
+                #     logger.error('Failed loading JSON:', path)
+                #     exit()
+
+    if plot_type == 'bias':
+        columns = COLUMNS + ['Model Bias', 'Region', 'Accuracy']
+        df = pd.DataFrame(columns=columns, data=rows)
+    else:
+        df = pd.DataFrame(columns=COLUMNS, data=rows)
     return df
 
 
-def _log_to_df(log_data):
+def _log_to_df_bias(log_data):
+    # Aggregate explainers don't have this
+    if 'results' not in log_data:
+        return []
+
+    # Rename explainers
+    exp = log_data['explainer']
+    if exp in real_names:
+        log_data['explainer'] = real_names[exp]
+
+    rows = []
+    for i, model_type in enumerate(['Original', 'Stained']):
+        for j, region in enumerate(['R', 'Not R']):
+            rows.append([
+                    log_data['seed'],
+                    log_data['dataset'],
+                    log_data['model_type'],
+                    log_data['bias_len'],
+                    log_data['explainer'],
+                    log_data['budget'],
+                    log_data['recall'],
+                    model_type,
+                    region,
+                    log_data['results'][i][j]
+            ])
+    return rows
+
+
+def _log_to_df_budget(log_data):
+    # Rename explainers
+    exp = log_data['explainer']
+    if exp in real_names:
+        log_data['explainer'] = real_names[exp]
+
     row = [
             log_data['seed'],
             log_data['dataset'],
@@ -103,11 +152,11 @@ def _log_to_df(log_data):
             log_data['bias_len'],
             log_data['explainer'],
             log_data['budget'],
-            log_data['recall'],
+            log_data['recall']
     ]
     return row
 
-    
+
 def get_data_ordered(df, dataset_order, model_order, explainer_order, logger):
     models = get_column_ordered(df['Model'], model_order, logger)
     datasets = get_column_ordered(df['Dataset'], dataset_order, logger)
@@ -116,7 +165,7 @@ def get_data_ordered(df, dataset_order, model_order, explainer_order, logger):
     logger.info('Models: {}'.format(models))
     logger.info('Datasets: {}'.format(datasets))
     logger.info('Explainers: {}'.format(explainers))
-    
+
     return datasets, models, explainers
 
 
@@ -125,18 +174,18 @@ def get_column_ordered(column, column_order, logger):
 
     if column_order is None:
         return unique
-    
+
     # Check which explainers are actually in logs
     result = []
     for x in column_order:
         if x in unique:
             result.append(x)
-            
+
     # Warn about explainers in logs not included in plot
     for x in unique:
         if not x in result:
             logger.info('{} found, but not given order in plot'.format(x))
-    
+
     return result
 
 

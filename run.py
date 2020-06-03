@@ -26,23 +26,24 @@ from explainers import (
 global args                     # Arguments from cmd line
 LOG_PATH = 'logs'               # Top level directory for log files
 DATA_DIR = 'datasets'           # Folder containing datasets
-TRAIN_SIZE = 0.9                # Train split ratio (including dev)
+TRAIN_SIZE = 0.8                # Train split ratio (including dev)
 MIN_OCCURANCE = 0.05            # Min occurance for words to be vectorized
 MAX_OCCURANCE = 1.00            # Max occurance for words to be vectorized
-BIAS_MIN_DF = 0.30              # Min occurance for words to be bias words
+BIAS_MIN_DF = 0.20              # Min occurance for words to be bias words
 BIAS_MAX_DF = 0.50              # Max occurance for words to be bias words
 MAX_BUDGET = 5                  # Upper bound of budget to test explainers
 N_SAMPLES = 50                  # Number of samples to evaluate each explainer
 N_BAGS = 5                      # Number of bags to create in bagging test
- 
+
  # Path to toy dataset for testing this scripts functionality
 TOY_DATASET = 'datasets/newsgroups_atheism.csv'
+TOY_DATASET = 'datasets/goodreads.csv'
 
 MODELS = [
-    'logistic', 
-    'dt', 
-    'rf', 
-    'mlp',
+    'logistic',
+    'dt',
+    'rf',
+    # 'mlp',
 ]
 
 # Test types handled by this script
@@ -82,7 +83,7 @@ def main():
                     'seed': seed,
                     'dataset': dataset,
                     'model_type': model_type,
-                    'bias_length': 2
+                    'bias_length': 3
                 })
 
     if pool_size == 1:
@@ -124,11 +125,11 @@ def build_biased_model(dataset_path, model_type, bias_length, runlog):
 
 
 def explainers_budget_test(
-    model_bias, 
-    explainers, 
-    bias_words, 
-    train_df, 
-    n_samples, 
+    model_bias,
+    explainers,
+    bias_words,
+    train_df,
+    n_samples,
     runlog
 ):
     X_all = train_df['reviews'].values
@@ -165,7 +166,7 @@ def explainers_budget_test(
                     if word in top_feats:
                         recall += 1
                 runlog['recall'] = recall / bias_length
-                
+
                 if not args.no_log:
                     utils.save_log(args.log_dir, runlog, quiet=args.quiet)
 
@@ -183,7 +184,7 @@ def run_seed(arguments):
     runlog['model_type'] = model_type
     runlog['bias_len']   = bias_length
     runlog['min_occur']  = MIN_OCCURANCE
-    runlog['max_occur']  = MIN_OCCURANCE
+    runlog['max_occur']  = MAX_OCCURANCE
 
     np.random.seed(seed)
     os.environ['MKL_NUM_THREADS'] = '1'
@@ -197,10 +198,10 @@ def run_seed(arguments):
 
     # Evaluate both models on biased region R and ~R
     utils.evaluate_models(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
+    utils.evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
     if (not args.no_log) and args.test == 'bias_test':
         if not args.no_log:
-            filename = '{0}_{1:04d}.json'.format(bias_length, seed)
-            utils.save_log(args.log_dir, filename, runlog, quiet=args.quiet)
+            utils.save_log(args.log_dir, runlog, quiet=args.quiet)
         return
 
     if args.test == 'budget_test':
