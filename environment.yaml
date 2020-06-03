@@ -137,5 +137,4 @@ dependencies:
     - tabulate==0.8.6
     - treeinterpreter==0.2.2
     - urllib3==1.25.6
-prefix: /home/jsippy/.anaconda3/envs/bias
 

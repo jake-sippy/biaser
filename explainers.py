@@ -9,21 +9,15 @@ from shap import KernelExplainer, DeepExplainer, kmeans
 
 
 class Explainer:
-    def __init__(self, model, training_data, seed, text=False):
+    def __init__(self, model, training_data):
         # Actual model must be last step
         self.training_data = training_data
-        if text:
-            self.model = model
-        else:
-            self.preprocessor = Pipeline(steps=model.steps[:-1])
-            self.model = model.steps[-1][1]
+        self.preprocessor = Pipeline(steps=model.steps[:-1])
+        self.model = model.steps[-1][1]
         if 'counts' in model.named_steps:
             self.feature_names = model.named_steps['counts'].get_feature_names()
-        elif 'text2ind' in model.named_steps:
-            self.feature_names = model.named_steps['text2ind'].get_feature_names()
         else:
             assert False, 'Current model has no way to get feature names'
-        self.seed = seed
 
     def explain(self, instance, budget):
         # Return a list of tuples: (feature, importance). Sorted in decreasing
@@ -32,19 +26,19 @@ class Explainer:
 
 
 class LimeExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(LimeExplainer, self).__init__(model, training_data, seed)
+    def __init__(self, model, training_data):
+        super(LimeExplainer, self).__init__(model, training_data)
         data = self.preprocessor.transform(self.training_data)
         self.explainer = LimeTabularExplainer(
                 training_data=data.astype(float),
-                feature_names=self.feature_names,
-                random_state=self.seed)
+                feature_names=self.feature_names)
 
-    def explain(self, instance, budget):
+    def explain(self, instance, budget, num_samples=5000):
         instance = self.preprocessor.transform([instance])[0]
         exp = self.explainer.explain_instance(
                 data_row=instance,
                 predict_fn=self.model.predict_proba,
+                num_samples=num_samples,
                 num_features=budget)
 
         feature_pairs = exp.as_map()[1]
@@ -54,9 +48,59 @@ class LimeExplainer(Explainer):
         return feats[:budget]
 
 
+class BaggedLimeExplainer(Explainer):
+    def __init__(self, model, training_data, n_bags=3, reduced=False):
+        super(BaggedLimeExplainer, self).__init__(model, training_data)
+        data = self.preprocessor.transform(self.training_data)
+
+        # Create multiple LIME instances
+        self.reduced = reduced
+        self.n_bags = n_bags
+        self.explainers = []
+        for i in range(n_bags):
+            explainer = LimeTabularExplainer(
+                    training_data=data.astype(float),
+                    feature_names=self.feature_names)
+            self.explainers.append(explainer)
+
+    def explain(self, instance, budget):
+        instance = self.preprocessor.transform([instance])[0]
+
+        # 5000 is the default num_samples in LIME
+        if self.reduced:
+            num_samples = int(5000 / self.n_bags)
+        else:
+            num_samples = 5000
+
+        features = []
+        importances = []
+
+        for explainer in self.explainers:
+            exp = explainer.explain_instance(
+                    data_row=instance,
+                    predict_fn=self.model.predict_proba,
+                    num_samples=num_samples,
+                    num_features=budget)
+            feature_pairs = exp.as_map()[1]
+
+            for feat_idx, importance in feature_pairs:
+                feature_name = self.feature_names[feat_idx]
+                if feature_name in features:
+                    idx = features.index(feature_name)
+                    importances[idx] += importance
+                else:
+                    features.append(feature_name)
+                    importances.append(importance)
+
+        importances = [i / self.n_bags for i in importances]
+        pairs = list(zip(features, importances))
+        pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+        return pairs[:budget]
+
+
 class ShapExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(ShapExplainer, self).__init__(model, training_data, seed)
+    def __init__(self, model, training_data):
+        super(ShapExplainer, self).__init__(model, training_data)
         data = self.preprocessor.transform(training_data)
         background_data = kmeans(data, 10)
         self.explainer = KernelExplainer(
@@ -77,9 +121,41 @@ class ShapExplainer(Explainer):
         return pairs[:budget]
 
 
+class BaggedShapExplainer(Explainer):
+    def __init__(self, model, training_data, n_bags=3):
+        super(BaggedShapExplainer, self).__init__(model, training_data)
+        data = self.preprocessor.transform(self.training_data)
+
+        # Create multiple LIME instances
+        self.n_bags = n_bags
+        self.explainers = []
+        for i in range(n_bags):
+            explainer = ShapExplainer(model, training_data)
+            self.explainers.append(explainer)
+
+    def explain(self, instance, budget):
+        features = []
+        importances = []
+        for explainer in self.explainers:
+            pairs = explainer.explain(instance, budget)
+            for feature_name, importance in pairs:
+                if feature_name in features:
+                    idx = features.index(feature_name)
+                    importances[idx] += importance
+                else:
+                    features.append(feature_name)
+                    importances.append(importance)
+
+        importances = [i / self.n_bags for i in importances]
+        pairs = list(zip(features, importances))
+        pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+        return pairs[:budget]
+
+
+
 class GreedyExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(GreedyExplainer, self).__init__(model, training_data, seed)
+    def __init__(self, model, training_data):
+        super(GreedyExplainer, self).__init__(model, training_data)
 
     def explain(self, instance, budget):
         instance = self.preprocessor.transform([instance])
@@ -101,8 +177,8 @@ class GreedyExplainer(Explainer):
 
 
 class RandomExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(RandomExplainer, self).__init__(model, training_data, seed)
+    def __init__(self, model, training_data):
+        super(RandomExplainer, self).__init__(model, training_data)
 
     def explain(self, instance, budget):
         # Not generating random importances for now, just setting all to 0
@@ -111,8 +187,8 @@ class RandomExplainer(Explainer):
 
 
 class LogisticExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(LogisticExplainer, self).__init__(model, training_data, seed)
+    def __init__(self, model, training_data):
+        super(LogisticExplainer, self).__init__(model, training_data)
 
     def explain(self, instance, budget, p=False):
         # Pair feature names with importances and sort
@@ -130,8 +206,8 @@ class LogisticExplainer(Explainer):
 
 
 class TreeExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(TreeExplainer, self).__init__(model, training_data, seed)
+    def __init__(self, model, training_data):
+        super(TreeExplainer, self).__init__(model, training_data)
 
     def explain(self, instance, budget, p=False):
         # Pair feature names with importances and sort
@@ -145,95 +221,3 @@ class TreeExplainer(Explainer):
         )
         if p: print(pairs[:10])
         return pairs[:budget]
-
-
-# TEXT EXPLAINERS ##############################################################
-
-class GreedyTextExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(GreedyTextExplainer, self).__init__(
-                model,
-                training_data,
-                seed,
-                text=True)
-        self.mask = '-----'
-
-    def explain(self, instance, budget):
-        vectorizer = CountVectorizer()
-        preprocess = vectorizer.build_preprocessor()
-        tokenize = vectorizer.build_tokenizer()
-        tokens = tokenize(preprocess(instance))
-        base = self.model.predict_proba([instance])[0, 1]
-        importances = []
-        for i in range(len(tokens)):
-            hidden_word = tokens[i]
-            tokens[i] = self.mask
-            pred = self.model.predict_proba([' '.join(tokens)])[0, 1]
-            importances.append( (hidden_word.lower(), base - pred) )
-            tokens[i] = hidden_word
-
-        feature_pairs = sorted(
-            importances,
-            key=lambda x: abs(x[1]),
-            reverse=True
-        )
-
-        for feature, importance in feature_pairs[:budget]:
-            print('{0:10s}: {1:6.4f}'.format(feature, importance))
-        print('------------')
-
-        feats, _ = zip(*feature_pairs[:budget])
-        return feats
-
-
-class LimeTextExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(LimeTextExplainer, self).__init__(model, training_data, seed,
-                text=True)
-        self.explainer = LimeText(random_state=self.seed)
-
-    def explain(self, instance, budget):
-        exp = self.explainer.explain_instance(
-                text_instance=instance,
-                classifier_fn=self.model.predict_proba,
-                num_features=budget)
-
-        feature_pairs = exp.as_list()
-        feats = []
-        for feature, importance in feature_pairs:
-            print('{0:10s}: {1:6.4f}'.format(feature, importance))
-            feats.append(feature)
-        print('------------')
-        return feats
-
-
-class ShapTextExplainer(Explainer):
-    def __init__(self, model, training_data, seed):
-        super(ShapTextExplainer, self).__init__(model, training_data, seed,
-                text=True)
-        self.preprocessor = Pipeline(steps=model.steps[:-1])
-        model = model.steps[-1][1].module_
-        background_data = self.preprocessor.transform(training_data[:100])
-        background_data = torch.Tensor(background_data).long().to('cuda')
-        self.explainer = DeepExplainer(model, background_data)
-
-    def explain(self, instance, budget):
-        print(instance)
-        instance = self.preprocessor.transform([instance])
-        print(instance)
-        instance = torch.Tensor(instance).long().to('cuda')
-        print(instance)
-        values = self.explainer.shap_values(X=instance)
-        print(values)
-        exit()
-        feature_pairs = sorted(
-                zip(self.feature_names, values),
-                key=lambda x : abs(x[1]),
-                reverse=True
-        )
-
-        for feature, importance in feature_pairs:
-            print('{0:10s}: {1:6.4f}'.format(feature, importance))
-        print('------------')
-        feats, _ = zip(*feature_pairs[:budget])
-        return feats
