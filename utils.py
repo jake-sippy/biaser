@@ -68,13 +68,11 @@ def train_models(model_constructor, train_df, runlog, bias_only=False, quiet=Fal
         X_train = pipe_bias.transform(X_train)
         X_train_bias = {
             'data': X_train,
-            'biased': X_train_biased,
             'sample_weight': sample_weight_orig
         }
 
         X_train_orig = {
             'data': X_train,
-            'biased': X_train_biased,
             'sample_weight': sample_weight_bias
         }
 
@@ -156,6 +154,14 @@ def evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=False):
 
 
 def save_log(log_dir, runlog, quiet=False):
+
+    if runlog['test_name'] == 'bias_test':
+        filename = '{:d}_{:03d}.json'.format(
+                # runlog['explainer'],
+                runlog['bias_len'],
+                runlog['seed'])
+                # runlog['budget'],
+                # runlog['example_id'])
 
     if runlog['test_name'] == 'budget_test':
         filename = '{:s}_{:d}_{:03d}_{:02d}_{:03d}.json'.format(

@@ -30,20 +30,23 @@ TRAIN_SIZE = 0.8                # Train split ratio (including dev)
 MIN_OCCURANCE = 0.05            # Min occurance for words to be vectorized
 MAX_OCCURANCE = 1.00            # Max occurance for words to be vectorized
 BIAS_MIN_DF = 0.20              # Min occurance for words to be bias words
-BIAS_MAX_DF = 0.50              # Max occurance for words to be bias words
+BIAS_MAX_DF = 0.80              # Max occurance for words to be bias words
 MAX_BUDGET = 5                  # Upper bound of budget to test explainers
 N_SAMPLES = 50                  # Number of samples to evaluate each explainer
-N_BAGS = 5                      # Number of bags to create in bagging test
+N_BAGS = 3                      # Number of bags to create in bagging test
+MIN_R_PERFOMANCE = 0.90         # Minimum accuracy on region R to allow
+MIN_F1_SCORE = 0.50             # Minimum F1-score to allow for biased model
+MAX_RETRIES = 5                 # Maximum retries if model performance is low
 
  # Path to toy dataset for testing this scripts functionality
-TOY_DATASET = 'datasets/newsgroups_atheism.csv'
-TOY_DATASET = 'datasets/goodreads.csv'
+TOY_DATASET = 'datasets/imdb.csv'
+# TOY_DATASET = 'datasets/goodreads.csv'
 
 MODELS = [
     'logistic',
     'dt',
     'rf',
-    # 'mlp',
+    'mlp',
 ]
 
 # Test types handled by this script
@@ -62,8 +65,6 @@ def main():
     if args.toy:
         # Toy flag, only test on 1 small dataset
         datasets.append(TOY_DATASET)
-        args.seed_low = 0
-        args.seed_high = 1
     else:
         for filename in os.listdir(DATA_DIR):
             datasets.append(os.path.join(DATA_DIR, filename))
@@ -73,12 +74,18 @@ def main():
     for dataset in datasets:
         for model_type in MODELS:
             for seed in range(args.seed_low, args.seed_high):
-                # arguments.append({
-                #     'seed': seed,
-                #     'dataset': dataset,
-                #     'model_type': model_type,
-                #     'bias_length': 1
-                # })
+                arguments.append({
+                    'seed': seed,
+                    'dataset': dataset,
+                    'model_type': model_type,
+                    'bias_length': 1
+                })
+                arguments.append({
+                    'seed': seed,
+                    'dataset': dataset,
+                    'model_type': model_type,
+                    'bias_length': 2
+                })
                 arguments.append({
                     'seed': seed,
                     'dataset': dataset,
@@ -97,6 +104,87 @@ def main():
                        total=len(arguments)))
         pool.close()
         pool.join()
+
+
+def run_seed(arguments):
+    seed = arguments['seed']
+    dataset = arguments['dataset']
+    model_type = arguments['model_type']
+    bias_length = arguments['bias_length']
+
+    if 'train_attempts' not in arguments:
+        np.random.seed(seed)
+        os.environ['MKL_NUM_THREADS'] = '1'
+        torch.set_num_threads(1)
+        arguments['train_attempts'] = 1
+
+    elif arguments['train_attempts'] > MAX_RETRIES:
+        assert False, 'Exceeded maximum number of retries, bias failed'
+
+    print('\tTRAIN_ATTEMPTS = {}'.format(arguments['train_attempts']))
+
+    # Building Runlog dictionary with seed args
+    runlog = {}
+    runlog['toy']        = args.toy
+    runlog['seed']       = seed
+    runlog['test_name']  = args.test
+    runlog['model_type'] = model_type
+    runlog['bias_len']   = bias_length
+    runlog['min_occur']  = MIN_OCCURANCE
+    runlog['max_occur']  = MAX_OCCURANCE
+
+    model_orig, \
+    model_bias, \
+    train_df,   \
+    test_df,    \
+    bias_words = build_biased_model(dataset, model_type, bias_length, runlog)
+
+    # Evaluate both models on biased region R and ~R
+    utils.evaluate_models(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
+    utils.evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
+
+    R_bias_acc = runlog['results'][1][0]
+    bias_f1 = runlog['bias_test_f1']
+    if R_bias_acc < MIN_R_PERFOMANCE:
+        print('Accuracy on region R too low (expected >= {}, got {})'.format(
+            MIN_R_PERFOMANCE, R_bias_acc))
+        arguments['train_attempts'] += 1
+        run_seed(arguments)
+        return
+
+    if bias_f1 < MIN_F1_SCORE:
+        print('F1-score too low on biased model (expected >= {}, got {})'.format(
+            MIN_F1_SCORE, bias_f1))
+        arguments['train_attempts'] += 1
+        run_seed(arguments)
+        return
+
+    if (not args.no_log) and args.test == 'bias_test':
+        utils.save_log(args.log_dir, runlog, quiet=args.quiet)
+        return
+
+    if args.test == 'budget_test':
+        exps = {
+            'Random': RandomExplainer,
+            'Greedy': GreedyExplainer,
+            'LIME': LimeExplainer,
+            'SHAP':ShapExplainer,
+        }
+        n_samples = 1 if args.toy else N_SAMPLES
+        explainers_budget_test(model_bias, exps, bias_words, train_df, n_samples, runlog)
+        return
+
+    if args.test ==  'boost_test':
+        exps = {
+            'Greedy': GreedyExplainer,
+            'LIME': LimeExplainer,
+            'SHAP':ShapExplainer,
+            'Aggregate (LIME x 3)': BaggedLimeExplainer,
+            'Aggregate (SHAP x 3)': BaggedShapExplainer,
+        }
+        n_samples = 1 if args.toy else N_SAMPLES
+        explainers_budget_test(model_bias, exps, bias_words, train_df, n_samples, runlog)
+        return
 
 
 def build_biased_model(dataset_path, model_type, bias_length, runlog):
@@ -171,70 +259,13 @@ def explainers_budget_test(
                     utils.save_log(args.log_dir, runlog, quiet=args.quiet)
 
 
-def run_seed(arguments):
-    seed = arguments['seed']
-    dataset = arguments['dataset']
-    model_type = arguments['model_type']
-    bias_length = arguments['bias_length']
-
-    runlog = {}
-    runlog['toy']        = args.toy
-    runlog['seed']       = seed
-    runlog['test_name']  = args.test
-    runlog['model_type'] = model_type
-    runlog['bias_len']   = bias_length
-    runlog['min_occur']  = MIN_OCCURANCE
-    runlog['max_occur']  = MAX_OCCURANCE
-
-    np.random.seed(seed)
-    os.environ['MKL_NUM_THREADS'] = '1'
-    torch.set_num_threads(1)
-
-    model_orig, \
-    model_bias, \
-    train_df,   \
-    test_df,    \
-    bias_words = build_biased_model(dataset, model_type, bias_length, runlog)
-
-    # Evaluate both models on biased region R and ~R
-    utils.evaluate_models(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
-    utils.evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
-    if (not args.no_log) and args.test == 'bias_test':
-        if not args.no_log:
-            utils.save_log(args.log_dir, runlog, quiet=args.quiet)
-        return
-
-    if args.test == 'budget_test':
-        exps = {
-            'Random': RandomExplainer,
-            'Greedy': GreedyExplainer,
-            'LIME': LimeExplainer,
-            'SHAP':ShapExplainer,
-        }
-        n_samples = 1 if args.toy else N_SAMPLES
-        explainers_budget_test(model_bias, exps, bias_words, train_df, n_samples, runlog)
-        return
-
-    if args.test ==  'boost_test':
-        exps = {
-            'Greedy': GreedyExplainer,
-            'LIME': LimeExplainer,
-            'SHAP':ShapExplainer,
-            'Aggregate (LIME x 3)': BaggedLimeExplainer,
-            'Aggregate (SHAP x 3)': BaggedShapExplainer,
-        }
-        n_samples = 1 if args.toy else N_SAMPLES
-        explainers_budget_test(model_bias, exps, bias_words, train_df, n_samples, runlog)
-        return
-
-
 def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         'test',
         type=str,
         metavar='TEST',
-        help='Test to run - one of: {}'.format(TESTS))
+        help=' | '.join(TESTS))
     parser.add_argument(
         'seed_low',
         type=int,
@@ -274,8 +305,13 @@ def setup_args():
         help='Run a toy version of the test')
 
     args = parser.parse_args()
+
+    bad_test_msg = 'Test not found: {}'.format(args.test)
+    assert (args.test in TESTS)
+
     bad_seed_msg = 'No seeds in [{}, {})'.format(args.seed_low, args.seed_high)
     assert (args.seed_low < args.seed_high), bad_seed_msg
+
     return args
 
 

@@ -15,11 +15,20 @@ from skorch import callbacks
 MIN_OCCURANCE = 0.01            # Min occurance for words to be vectorized
 MAX_OCCURANCE = 1.00            # Max occurance for words to be vectorized
 
-# MLP Features learned through CV
-MLP_MAX_VOCAB = 300
-MLP_N_HIDDEN = 100
-MLP_MAX_EPOCHS = 1000
-MLP_LR = 1e-5
+# MLP Features learned through CV 
+
+
+# (newsgroups)
+# MLP_MAX_VOCAB = 100 
+# MLP_N_HIDDEN = 30
+# MLP_MAX_EPOCHS = 50
+# MLP_LR = 1
+
+# (imdb)
+MLP_MAX_VOCAB = 100 
+MLP_N_HIDDEN = 30
+MLP_MAX_EPOCHS = 100
+MLP_LR = 1e-1
 
 # # IMDb, Amazon
 # MLP_MAX_VOCAB = 150
@@ -123,14 +132,14 @@ class WeightedNeuralNet(NeuralNetClassifier):
 
 
 class MLP(nn.Module):
-    def __init__(self, n_input, n_output=2, n_hidden=100):
+    def __init__(self, n_input, n_hidden=100, n_output=2):
         super(MLP, self).__init__()
         self.n_output = n_output
         self.n_hidden = n_hidden
         self.fc1 = nn.Linear(n_input, n_hidden)
         self.fc2 = nn.Linear(n_hidden, n_output)
 
-    def forward(self, data, sample_weight=None, biased=None):
+    def forward(self, data, sample_weight=None):
         data = data.float()
         data = self.fc1(data)
         data = F.relu(data)

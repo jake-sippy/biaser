@@ -10,10 +10,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 real_names = {
+    # Models
     'logistic'            : 'Logistic Regression',
     'dt'                  : 'Decision Tree',
     'rf'                  : 'Random Forest',
     'mlp'                 : 'MLP',
+
+    # Datasets
     'newsgroups_atheism'  : 'Newsgroup (Atheism)',
     'newsgroups_baseball' : 'Newsgroup (Baseball)',
     'newsgroups_ibm'      : 'Newsgroup (IBM)',
@@ -21,68 +24,18 @@ real_names = {
     'amazon_cell'         : 'Amazon (Cell Phones)',
     'amazon_home'         : 'Amazon (Home & Kitchen)',
     'goodreads'           : 'Goodreads',
+
+    # Explainers
     'Aggregate (All)'     : 'Agg. (All)',
-    # 'Aggregate (LIME x 3)': 'Agg. (LIME x 3)',
-    # 'Aggregate (SHAP x 3)': 'Agg. (SHAP x 3)',
     'Unbiased'            : 'Original',
     'Biased'              : 'Stained',
-    # 'Aggregate (All)'     : 'All',
     'Aggregate (LIME x 3)': 'LIME x 3',
     'Aggregate (SHAP x 3)': 'SHAP x 3',
+
+    # Tests
+    'bias'                : 'Stain Verification',
 }
 
-COLUMNS = [
-    'Seed',
-    'Dataset',
-    'Model',
-    'Bias Length',
-    'Explainer',
-    'Budget',
-    'Recall',
-]
-
-# Default plot settings
-# font = {
-#     'weight' : 'bold',
-#     'size'   : 20
-# }
-# matplotlib.rc('font', **font)
-
-PLOT_TYPES = [
-    'bias',
-    'budget',
-    'budget_sum',
-]
-
-def get_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'plot_type',
-        type=str,
-        metavar='plot_type',
-        help='|'.join(PLOT_TYPES))
-    parser.add_argument(
-            'dir',
-            type=str,
-            metavar='log_directory',
-            help='The directory holding the log files')
-    parser.add_argument(
-            '-o', '--output',
-            type=str,
-            metavar='output',
-            required=False,
-            default='plot.svg',
-            help='The path to output the plot to')
-    args = parser.parse_args()
-    return args
-
-
-def get_logger(name, level=logging.INFO):
-    # Setup the logging format
-    logging.root.setLevel(level)
-    log_format = ('[%(levelname)-7s] ' '(%(asctime)s) - ' '%(message)s')
-    logging.basicConfig(format=log_format, datefmt='%Y-%m-%d %I:%M:%S %p')
-    return logging.getLogger(name)
 
 
 def load_log_data(log_directory, plot_type, logger):
@@ -93,33 +46,42 @@ def load_log_data(log_directory, plot_type, logger):
             logger.debug('Parsing: {}'.format(f))
             path = os.path.join(root, f)
             with open(path, 'r') as f:
-                # try:
                 data = json.load(f)
                 if plot_type == 'bias':
                     rows.extend(_log_to_df_bias(data))
                 else:
                     rows.append(_log_to_df_budget(data))
-                # except:
-                #     logger.error('Failed loading JSON:', path)
-                #     exit()
 
     if plot_type == 'bias':
-        columns = COLUMNS + ['Model Bias', 'Region', 'Accuracy']
+        columns = [
+            'Seed',
+            'Dataset',
+            'Model',
+            'Bias Length',
+            'Model Bias',
+            'Region',
+            'Accuracy'
+        ]
         df = pd.DataFrame(columns=columns, data=rows)
+
     else:
-        df = pd.DataFrame(columns=COLUMNS, data=rows)
+        columns = [
+            'Seed',
+            'Dataset',
+            'Model',
+            'Bias Length',
+            'Explainer',
+            'Budget',
+            'Recall',
+        ]
+        df = pd.DataFrame(columns=columns, data=rows)
     return df
 
 
 def _log_to_df_bias(log_data):
-    # Aggregate explainers don't have this
+    # Aggregate explainers don't have training results
     if 'results' not in log_data:
         return []
-
-    # Rename explainers
-    exp = log_data['explainer']
-    if exp in real_names:
-        log_data['explainer'] = real_names[exp]
 
     rows = []
     for i, model_type in enumerate(['Original', 'Stained']):
@@ -129,9 +91,6 @@ def _log_to_df_bias(log_data):
                     log_data['dataset'],
                     log_data['model_type'],
                     log_data['bias_len'],
-                    log_data['explainer'],
-                    log_data['budget'],
-                    log_data['recall'],
                     model_type,
                     region,
                     log_data['results'][i][j]
@@ -160,7 +119,11 @@ def _log_to_df_budget(log_data):
 def get_data_ordered(df, dataset_order, model_order, explainer_order, logger):
     models = get_column_ordered(df['Model'], model_order, logger)
     datasets = get_column_ordered(df['Dataset'], dataset_order, logger)
-    explainers = get_column_ordered(df['Explainer'], explainer_order, logger)
+
+    if 'Explainer' in df.columns:
+        explainers = get_column_ordered(df['Explainer'], explainer_order, logger)
+    else:
+        explainers = None
 
     logger.info('Models: {}'.format(models))
     logger.info('Datasets: {}'.format(datasets))
