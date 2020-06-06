@@ -13,11 +13,14 @@ DATASET_DIR = 'datasets'
 
 
 def load_goodreads(path):
-    filename = os.path.join(DATASET_DIR, 'goodreads_reviews_children.json')
+    file_id = '1908GDMdrhDN7sTaI_FelSHxbwcNM1EzR'
+    tmp_filename = 'tmp_goodreads.json.gz'
+    _download_file_from_google_drive(file_id, tmp_filename)
+    with open(tmp_filename, 'rb') as f:
+        gzip_file = f.read()
+    data = gzip.decompress(gzip_file)
 
-    # file_id = '1908GDMdrhDN7sTaI_FelSHxbwcNM1EzR'
-    # url = 'https://drive.google.com/uc?id=' + file_id
-    dataset = pd.read_json(filename, lines=True)
+    dataset = pd.read_json(data, lines=True)
 
     keep_ratings = [1, 2, 4, 5]
     dataset = dataset[dataset['rating'].isin(keep_ratings)]
@@ -27,6 +30,8 @@ def load_goodreads(path):
     filename = os.path.join(path, 'goodreads.csv')
     dataset.to_csv(filename, index=False, header=False,
             columns=['review_text', 'rating'])
+    os.remove(tmp_filename)
+
 
 # Load the IMDb Reviews dataset
 def load_imdb(path):
@@ -116,6 +121,30 @@ def load_newsgroups_ibm(path):
     df = pd.DataFrame(data=zip(data.data, data.target))
     filename = os.path.join(path, 'newsgroups_ibm.csv')
     df.to_csv(filename, index=False, header=False)
+
+
+# HELPERS ######################################################################
+
+def _download_file_from_google_drive(id, destination):
+    URL = "https://docs.google.com/uc?export=download"
+    CHUNK_SIZE = 32768
+    session = requests.Session()
+    response = session.get(URL, params = { 'id' : id }, stream = True)
+
+    # get confirm token
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+
+    if token:
+        params = { 'id' : id, 'confirm' : token }
+        response = session.get(URL, params = params, stream = True)
+
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(CHUNK_SIZE):
+            if chunk: # filter out keep-alive new chunks
+                f.write(chunk)
 
 
 if __name__ == '__main__':
