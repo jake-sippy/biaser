@@ -13,6 +13,12 @@ DATASET_DIR = 'datasets'
 
 
 def load_goodreads(path):
+    print('goodreads...', end='')
+    filename = os.path.join(path, 'goodreads.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     file_id = '1908GDMdrhDN7sTaI_FelSHxbwcNM1EzR'
     tmp_filename = 'tmp_goodreads.json.gz'
     _download_file_from_google_drive(file_id, tmp_filename)
@@ -27,14 +33,20 @@ def load_goodreads(path):
     dataset['rating'] = dataset['rating'].map( {1:0, 2:0, 4:1, 5:1} ).astype(int)
 
     # write file
-    filename = os.path.join(path, 'goodreads.csv')
     dataset.to_csv(filename, index=False, header=False,
             columns=['review_text', 'rating'])
     os.remove(tmp_filename)
+    print('done')
 
 
 # Load the IMDb Reviews dataset
 def load_imdb(path):
+    print('amazon_cell...', end='')
+    filename = os.path.join(path, 'amazon_cell.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     url = 'http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz'
     response = urlopen(url)
     memfile = io.BytesIO(response.read())
@@ -51,13 +63,18 @@ def load_imdb(path):
                     labels.append(1 if rating > 5 else 0)
 
     df = pd.DataFrame(data=[i for i in zip(reviews, labels)])
-    filename = os.path.join(path, 'imdb.csv')
     df.to_csv(filename, index=False, header=False)
+    print('done')
 
 
 # Load the Amazon Cell Phones and Accessories Reviews dataset
 def load_amazon_cell(path):
-    print('Loading the Amazon Cell Phones and Accessories Reviews dataset...')
+    print('amazon_cell...', end='')
+    filename = os.path.join(path, 'amazon_cell.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     url = 'http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/' \
           'reviews_Cell_Phones_and_Accessories_5.json.gz'
     response = urlopen(url)
@@ -68,14 +85,19 @@ def load_amazon_cell(path):
     dataset['overall'] = dataset['overall'].map(
             {1:0, 2:0, 4:1, 5:1}
     )
-    filename = os.path.join(path, 'amazon_cell.csv')
     dataset.to_csv(filename, index=False, header=False,
             columns=['reviewText', 'overall'])
+    print('done')
 
 
 # Load the Amazon Home and Kitchen Reviews dataset
 def load_amazon_home(path):
-    print('Loading the Amazon Home and Kitchen Reviews dataset...')
+    print('amazon_home...', end='')
+    filename = os.path.join(path, 'amazon_home.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     url = 'http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/' \
           'reviews_Home_and_Kitchen_5.json.gz'
     response = urlopen(url)
@@ -86,41 +108,60 @@ def load_amazon_home(path):
     dataset['overall'] = dataset['overall'].map(
             {1:0, 2:0, 4:1, 5:1}
     )
-    filename = os.path.join(path, 'amazon_home.csv')
     dataset.to_csv(filename, index=False, header=False,
             columns=['reviewText', 'overall'])
+    print('done')
+
 
 # Load the 20 Newsgroups dataset Atheism v. Christianity
 def load_newsgroups_atheism(path):
+    print('newsgroups_atheism...', end='')
+    filename = os.path.join(path, 'newsgroups_atheism.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     data = fetch_20newsgroups(
             remove=('headers', 'footers', 'quotes'),
             categories=['alt.atheism', 'soc.religion.christian']
     )
     df = pd.DataFrame(data=zip(data.data, data.target))
-    filename = os.path.join(path, 'newsgroups_atheism.csv')
     df.to_csv(filename, index=False, header=False)
+    print('done')
 
 
 # Load the 20 Newsgroups dataset Baseball v. Hockey
 def load_newsgroups_baseball(path):
+    print('newsgroups_baseball...', end='')
+    filename = os.path.join(path, 'newsgroups_baseball.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     data = fetch_20newsgroups(
             remove=('headers', 'footers', 'quotes'),
             categories=['rec.sport.baseball', 'rec.sport.hockey']
     )
     df = pd.DataFrame(data=zip(data.data, data.target))
-    filename = os.path.join(path, 'newsgroups_baseball.csv')
     df.to_csv(filename, index=False, header=False)
+    print('done')
 
 
 # Load the 20 Newsgroups dataset IBM v. Mac
 def load_newsgroups_ibm(path):
+    print('newsgroups_ibm...', end='')
+    filename = os.path.join(path, 'newsgroups_ibm.csv')
+    if os.path.exists(filename):
+        print('already exists')
+        return
+
     data = fetch_20newsgroups(
             remove=('headers', 'footers', 'quotes'),
             categories=['comp.sys.ibm.pc.hardware', 'comp.sys.mac.hardware']
     )
     df = pd.DataFrame(data=zip(data.data, data.target))
-    filename = os.path.join(path, 'newsgroups_ibm.csv')
     df.to_csv(filename, index=False, header=False)
+    print('done')
 
 
 # HELPERS ######################################################################
@@ -153,10 +194,11 @@ if __name__ == '__main__':
         os.mkdir(directory)
 
     # Load datasets
-    load_goodreads(directory)
+    print('Downloading datasets')
     load_imdb(directory)
     load_amazon_cell(directory)
     load_amazon_home(directory)
     load_newsgroups_atheism(directory)
     load_newsgroups_baseball(directory)
     load_newsgroups_ibm(directory)
+    load_goodreads(directory)
