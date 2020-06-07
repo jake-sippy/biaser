@@ -154,9 +154,9 @@ if __name__ == '__main__':
 
     # Load datasets
     load_goodreads(directory)
-    # load_imdb(directory)
-    # load_amazon_cell(directory)
-    # load_amazon_home(directory)
-    # load_newsgroups_atheism(directory)
-    # load_newsgroups_baseball(directory)
-    # load_newsgroups_ibm(directory)
+    load_imdb(directory)
+    load_amazon_cell(directory)
+    load_amazon_home(directory)
+    load_newsgroups_atheism(directory)
+    load_newsgroups_baseball(directory)
+    load_newsgroups_ibm(directory)
