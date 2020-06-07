@@ -30,14 +30,14 @@ TRAIN_SIZE = 0.8                # Train split ratio (including dev)
 MIN_OCCURANCE = 0.05            # Min occurance for words to be vectorized
 MAX_OCCURANCE = 1.00            # Max occurance for words to be vectorized
 BIAS_MIN_DF = 0.20              # Min occurance for words to be bias words
-BIAS_MAX_DF = 0.80              # Max occurance for words to be bias words
+BIAS_MAX_DF = 0.60              # Max occurance for words to be bias words
 MAX_BUDGET = 5                  # Upper bound of budget to test explainers
 N_SAMPLES = 50                  # Number of samples to evaluate each explainer
 N_BAGS = 3                      # Number of bags to create in bagging test
 MIN_R_PERFOMANCE = 0.90         # Minimum accuracy on region R to allow
 MIN_F1_SCORE = 0.50             # Minimum F1-score to allow for biased model
 MAX_RETRIES = 5                 # Maximum retries if model performance is low
-BIAS_LENS = range(1, 3)         # Range of bias lengths to run
+BIAS_LENS = range(1, 4)         # Range of bias lengths to run
 
  # Path to toy dataset for testing this scripts functionality
 TOY_DATASET = 'datasets/newsgroups_atheism.csv'
@@ -136,14 +136,14 @@ def run_seed(arguments):
 
     R_bias_acc = runlog['results'][1][0]
     bias_f1 = runlog['bias_test_f1']
-    if R_bias_acc < MIN_R_PERFOMANCE:
+    if R_bias_acc < MIN_R_PERFOMANCE and arguments['train_attempts'] <= MAX_RETRIES:
         print('Accuracy on region R too low (expected >= {}, got {})'.format(
             MIN_R_PERFOMANCE, R_bias_acc))
         arguments['train_attempts'] += 1
         run_seed(arguments)
         return
 
-    if bias_f1 < MIN_F1_SCORE:
+    if bias_f1 < MIN_F1_SCORE and arguments['train_attempts'] <= MAX_RETRIES:
         print('F1-score too low on biased model (expected >= {}, got {})'.format(
             MIN_F1_SCORE, bias_f1))
         arguments['train_attempts'] += 1
