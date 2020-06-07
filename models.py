@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import xgboost as xgb
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
@@ -78,6 +79,18 @@ pipelines = {
             validate=False,
             accept_sparse=True)),
         ('model', RandomForestClassifier(n_estimators=1000)),
+    ]),
+
+    'xgb': lambda: Pipeline([
+        ('counts', TfidfVectorizer(
+            min_df=MIN_OCCURANCE,
+            max_df=MAX_OCCURANCE,
+            binary=False)),
+        ('dense', FunctionTransformer(
+            lambda x: x.toarray(),
+            validate=False,
+            accept_sparse=True)),
+        ('model', xgb.XGBClassifier(objective="binary:logistic")),
     ]),
 
     'mlp': lambda: Pipeline([

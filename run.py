@@ -12,14 +12,14 @@ import utils
 import biases
 from models import pipelines
 from explainers import (
-        GreedyExplainer,
-        LimeExplainer,
-        BaggedLimeExplainer,
-        BaggedShapExplainer,
-        ShapExplainer,
-        RandomExplainer,
-        TreeExplainer,
-        LogisticExplainer
+    GreedyExplainer,
+    LimeExplainer,
+    BaggedLimeExplainer,
+    BaggedShapExplainer,
+    ShapExplainer,
+    RandomExplainer,
+    TreeExplainer,
+    LogisticExplainer
 )
 
 # GLOBALS ######################################################################
@@ -37,16 +37,19 @@ N_BAGS = 3                      # Number of bags to create in bagging test
 MIN_R_PERFOMANCE = 0.90         # Minimum accuracy on region R to allow
 MIN_F1_SCORE = 0.50             # Minimum F1-score to allow for biased model
 MAX_RETRIES = 5                 # Maximum retries if model performance is low
+BIAS_LENS = range(1, 3)         # Range of bias lengths to run
 
  # Path to toy dataset for testing this scripts functionality
-TOY_DATASET = 'datasets/imdb.csv'
+TOY_DATASET = 'datasets/newsgroups_atheism.csv'
+# TOY_DATASET = 'datasets/imdb.csv'
 # TOY_DATASET = 'datasets/goodreads.csv'
 
 MODELS = [
     'logistic',
     'dt',
     'rf',
-    'mlp',
+    'xgb'
+    # 'mlp',
 ]
 
 # Test types handled by this script
@@ -71,37 +74,24 @@ def main():
 
     # Build list of arguments
     arguments = []
-    for dataset in datasets:
-        for model_type in MODELS:
-            for seed in range(args.seed_low, args.seed_high):
-                arguments.append({
-                    'seed': seed,
-                    'dataset': dataset,
-                    'model_type': model_type,
-                    'bias_length': 1
-                })
-                arguments.append({
-                    'seed': seed,
-                    'dataset': dataset,
-                    'model_type': model_type,
-                    'bias_length': 2
-                })
-                arguments.append({
-                    'seed': seed,
-                    'dataset': dataset,
-                    'model_type': model_type,
-                    'bias_length': 3
-                })
+    for seed in range(args.seed_low, args.seed_high):
+        for dataset in datasets:
+            for model_type in MODELS:
+                for bias_len in BIAS_LENS:
+                    arguments.append({
+                        'seed': seed,
+                        'dataset': dataset,
+                        'model_type': model_type,
+                        'bias_length': bias_len
+                    })
 
     if pool_size == 1:
         for arg in arguments:
-            print(arg)
             run_seed(arg)
-
     else:
         pool = Pool(pool_size, maxtasksperchild=1)
-        list(tqdm.tqdm(pool.imap(run_seed, arguments, chunksize=1),
-                       total=len(arguments)))
+        imap_results = pool.imap(run_seed, arguments, chunksize=1)
+        list(tqdm.tqdm(imap_results, total=len(arguments)))
         pool.close()
         pool.join()
 
@@ -119,7 +109,8 @@ def run_seed(arguments):
         arguments['train_attempts'] = 1
 
     elif arguments['train_attempts'] > MAX_RETRIES:
-        assert False, 'Exceeded maximum number of retries, bias failed'
+        pass
+        # assert False, 'Exceeded maximum number of retries, bias failed'
 
     print('\tTRAIN_ATTEMPTS = {}'.format(arguments['train_attempts']))
 
@@ -165,7 +156,7 @@ def run_seed(arguments):
 
     if args.test == 'budget_test':
         exps = {
-            'Random': RandomExplainer,
+            # 'Random': RandomExplainer,
             'Greedy': GreedyExplainer,
             'LIME': LimeExplainer,
             'SHAP':ShapExplainer,
