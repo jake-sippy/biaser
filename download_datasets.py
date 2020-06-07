@@ -41,8 +41,8 @@ def load_goodreads(path):
 
 # Load the IMDb Reviews dataset
 def load_imdb(path):
-    print('amazon_cell...', end='')
-    filename = os.path.join(path, 'amazon_cell.csv')
+    print('imdb...', end='')
+    filename = os.path.join(path, 'imdb.csv')
     if os.path.exists(filename):
         print('already exists')
         return
