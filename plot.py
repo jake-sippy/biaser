@@ -17,10 +17,11 @@ import plot_utils
 
 # If None use all models found in logs
 MODEL_ORDER = [
-    'logistic',
-    'dt',
-    'rf',
-    'mlp'
+    # 'logistic',
+    # 'dt',
+    # 'rf',
+    # 'xgb',
+    'mlp',
 ]
 
 # If None use all datasets found in logs
@@ -46,16 +47,15 @@ EXPLAINER_ORDER = [
     'Ground Truth',
 ]
 
-BIAS_LENGTH = 3                 # Bias length to plot
+BIAS_LENGTH = 3                 # Default bias length to plot
 BUDGETS = range(1, 6)           # Range of budgets to include
-GROUND_TRUTH_LINE = True        # Plot dashed line for GT if true
-
+GROUND_TRUTH_LINE = True        # Plot dashed line for GT (when available)
 
 ################################################################################
 # GLOBALS ######################################################################
 ################################################################################
 
-# Hardcoded colors to keep explainers consistent between plots
+# Hardcoded colors for explainers to keep consistent between plots
 EXPLAINER_COLORS = {
     'Greedy'       : (0.122, 0.467, 0.705),
     'LIME'         : (1.000, 0.498, 0.055),
@@ -66,9 +66,8 @@ EXPLAINER_COLORS = {
     'Ground Truth' : (0.580, 0.404, 0.741),
 }
 
-
-# Plot types available (change names here but perserve order)
-PLOT_TYPES = [ 'bias', 'budget', 'budget_avg', 'best_count' ]
+# Plot types available (change names here and in main())
+PLOT_TYPES = [ 'bias', 'budget']    # , 'budget_avg', 'best_count' ]
 
 # Setup the logging format
 logging.root.setLevel(logging.INFO)
@@ -76,7 +75,7 @@ log_format = ('[%(levelname)-7s] ' '(%(asctime)s) - ' '%(message)s')
 logging.basicConfig(format=log_format, datefmt='%Y-%m-%d %I:%M:%S %p')
 
 # Default plot settings
-font = { 'weight' : 'bold', 'size'   : 20 }
+font = { 'weight' : 'bold', 'size' : 20 }
 matplotlib.rc('font', **font)
 
 ################################################################################
@@ -102,107 +101,97 @@ def main():
     if args.plot_type != 'bias':
         assert len(explainers) > 0, "No explainers found, check EXPLAINER_ORDER and logs"
 
+    logger.info('Seeds: {}'.format(sorted(df['Seed'].unique())))
+    logger.info('Bias Length: {}'.format(args.bias_len))
     logger.info('Building plot type: {}'.format(args.plot_type))
 
     if args.plot_type == 'bias':
-        fig, axes = bias_plot(df, datasets, models)
+        fig, axes = bias_plot(df, datasets, models, args.bias_len)
 
     elif args.plot_type == 'budget':
-        fig, axes = budget_plot(df, datasets, models, explainers)
+        fig, axes = budget_plot(df, datasets, models, explainers, args.bias_len)
 
-    elif args.plot_type == 'budget_avg':
-        fig, axes = budget_avg_plot(df, datsets, models, explainers)
-
-    elif args.plot_type == 'best_count':
-        fig, axes = best_count_plot(df, datasets, models, explainers)
-        datasets = [''] # Hacky way to make the same as other plots
+    # elif args.plot_type == 'budget_avg':
+    #     fig, axes = budget_avg_plot(df, datsets, models, explainers, args.bias_len)
+    #
+    # elif args.plot_type == 'best_count':
+    #     fig, axes = best_count_plot(df, datasets, models, explainers, args.bias_len)
+    #     datasets = [''] # Hacky way to make the same as other plots
 
     # Handle annotations, etc.
-
-    test_name = plot_utils.real_names[args.plot_type]
-    fig.suptitle('{0:s}, Bias Length = {1:d}'.format(test_name, BIAS_LENGTH))
-
-    n_subplots = len(datasets) * len(models)
-
     annotations = []
-    if n_subplots == 1:
-        # just do title
-        d_name = datasets[0]
-        m_name = models[0]
-        if d_name in plot_utils.real_names:
-            d_name = plot_utils.real_names[d_name]
-        if m_name in plot_utils.real_names:
-            m_name = plot_utils.real_names[m_name]
-        plt.title('{}, {}'.format(d_name, m_name))
 
-        if args.plot_type == 'budget' or args.plot_type == 'bias':
-            handles, labels = axes[0,0].get_legend_handles_labels()
-            if args.plot_type == 'budget':
-                handles, labels = handles[1:], labels[1:]
-            n_cols = 2
-            legend = axes[0,0].legend(handles, labels, frameon=True,
-                    bbox_to_anchor=(0.0, 1.1), loc='upper left', ncol=n_cols)
-            annotations.append(legend)
+    # Write title
+    test_name = plot_utils.get_real_name(args.plot_type)
+    # fig.suptitle('{0:s}, Bias Length = {1:d}'.format(test_name, args.bias_len))
 
-    else:
-        handles, labels = axes[0,0].get_legend_handles_labels()
-        if args.plot_type == 'budget':
-            # These have the legend title as a label for some reason
-            handles = handles[1:]
-            labels = labels[1:]
-        n_cols = len(labels)
-        legend = axes[0,0].legend(handles, labels, frameon=True,
-                bbox_to_anchor=(0.0, 1.3), loc='upper left', ncol=n_cols)
-        annotations.append(legend)
+    # Write single legend at top of figure
+    handles, labels = axes[0,0].get_legend_handles_labels()
+    if args.plot_type == 'budget':
+        handles = handles[1:]
+        labels = labels[1:]
 
-        pad = 5
-        for ax, col in zip(axes[0], models):
-            if col in plot_utils.real_names:
-                col = plot_utils.real_names[col]
-            a = ax.annotate(col, xy=(0.5, 1), xytext=(0, pad),
-                        xycoords='axes fraction', textcoords='offset points',
-                        size='medium', ha='center', va='baseline')
-            annotations.append(a)
+    n_cols = len(labels)
+    legend = axes[0,0].legend(handles, labels, frameon=True,
+            bbox_to_anchor=(0.0, 1.3), loc='upper left', ncol=n_cols)
+    annotations.append(legend)
 
-        for ax, row in zip(axes[:,0], datasets):
-            if row in plot_utils.real_names:
-                row = plot_utils.real_names[row]
-            a = ax.annotate(row, xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - pad, 0),
-                        xycoords=ax.yaxis.label, textcoords='offset points',
-                        size='medium', ha='right', va='center', rotation=90)
-            annotations.append(a)
 
-        fig.subplots_adjust(top=0.85, bottom=0.05, hspace=0.3, wspace=0.2)
+    title = plt.annotate('[Title]', xy=(0.5, 1.0), xytext=(0, -25),
+            xycoords='figure fraction', textcoords='offset points',
+            size='large', ha='center', va='baseline')
+    annotations.append(title)
 
-    # Save plot
+    # Add annotations along top specifying model
+    pad = 5
+    for ax, model_name in zip(axes[0], models):
+        col = plot_utils.get_real_name(model_name)
+        a = ax.annotate(col, xy=(0.5, 1), xytext=(0, pad),
+                    xycoords='axes fraction', textcoords='offset points',
+                    size='medium', ha='center', va='baseline')
+        annotations.append(a)
+
+    # Add annotations along side specifying dataset
+    for ax, dataset_name in zip(axes[:,0], datasets):
+        row = plot_utils.get_real_name(dataset_name)
+        a = ax.annotate(row, xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - pad, 0),
+                    xycoords=ax.yaxis.label, textcoords='offset points',
+                    size='medium', ha='right', va='center', rotation=90)
+        annotations.append(a)
+
+    # Final adjustments and save plot
+    if args.plot_type == 'bias':
+        fig.subplots_adjust(top=0.96, bottom=0.03, left=0.2, right=0.95,
+                hspace=0.2, wspace=0.2)
+
+    elif args.plot_type == 'budget':
+        fig.subplots_adjust(top=0.95, bottom=0.03, left=0.15, right=0.95,
+                hspace=0.1, wspace=0.2)
+
     logger.info('Saving plot to: {}'.format(args.output))
-    plt.savefig(args.output, bbox_extra_artists=annotations,
-            bbox_inches='tight', format='pdf')
+    plt.savefig(
+        args.output,
+        bbox_extra_artists=annotations,
+        # bbox_inches='tight',
+        format='pdf')
 
 
-def bias_plot(df, datasets, models):
+def bias_plot(df, datasets, models, bias_len):
     fig, axes = plot_utils.get_subplots(datasets, models, sharex=False, sharey=False)
 
     for i, dataset in enumerate(datasets):
         for j, model in enumerate(models):
-
             # Select rows for this (dataset, model) pair
             mask  = df['Dataset'] == dataset
             mask &= df['Model'] == model
-            mask &= df['Bias Length'] == BIAS_LENGTH
+            mask &= df['Bias Length'] == bias_len
             data = df[mask]
 
-            assert not data.empty, "No rows found, error"
+            no_data_msg = "No rows found for {}, {}".format(dataset, model)
+            assert (not data.empty), no_data_msg
 
-            ax = sns.barplot(
-                data=data,
-                x='Model Bias',
-                y='Accuracy',
-                hue='Region',
-                hue_order=['R', 'Not R'],
-                # dodge=False,
-                ax=axes[i, j]
-            )
+            ax = sns.barplot(data=data, x='Model Bias', y='Accuracy',
+                hue='Region', hue_order=['R', 'Not R'], ax=axes[i, j])
 
             # Remove individual subplot legends in favor of a single global one
             ax.get_legend().remove()
@@ -214,7 +203,9 @@ def bias_plot(df, datasets, models):
     return fig, axes
 
 
-def budget_plot(df, datasets, models, explainers):
+def budget_plot(df, datasets, models, explainers, bias_len):
+    sns.set_context("paper", font_scale=1.5, rc={"lines.linewidth": 2.5})
+
     fig, axes = plot_utils.get_subplots(datasets, models, sharex=True, sharey=True)
 
     # Fill grid of datasets x models
@@ -222,7 +213,7 @@ def budget_plot(df, datasets, models, explainers):
         for j, model in enumerate(models):
             mask  = df['Dataset'] == dataset
             mask &= df['Model'] == model
-            mask &= df['Bias Length'] == BIAS_LENGTH
+            mask &= df['Bias Length'] == bias_len
             mask &= df['Budget'].isin(BUDGETS)
             data = df[mask]
 
@@ -233,140 +224,142 @@ def budget_plot(df, datasets, models, explainers):
             pal = np.array(pal)
 
             # Actual plot call
+            markers = ["s", "P", "X", "."]
             ax = sns.lineplot( data=data, x='Budget', y='Recall', hue='Explainer',
                     hue_order=explainers, style='Explainer', style_order=explainers,
-                    err_style='bars', markers=True, dashes=False, ax=axes[i, j],
+                    err_style='bars', markers=markers, dashes=False, ax=axes[i, j],
                     palette=pal, ms=10, alpha=0.75)
 
             # Remove subplot legends in favor of a single one
             ax.get_legend().remove()
             ax.set_ylim(0, 1.1)
+            ax.get_xaxis().set_ticks(sorted(data['Budget'].unique()))
 
     return fig, axes
 
 
-def budget_avg_plot(df, datasets, models, explainers):
-    # TODO Remove or test, this code is not up-to-date with other methods
-    assert False, 'This code is not up-to-date'
-    fig, axes = plot_utils.get_subplots(datasets, models, sharex=True, sharey=False)
-
-    # Dont include bar for gt, instead put vertical line
-    hue_order = explainers
-    if GROUND_TRUTH_LINE:
-        explainers_no_gt = explainers.copy()
-        explainers_no_gt.remove('Ground Truth')
-        hue_order = explainers_no_gt
-
-    for i, dataset in enumerate(datasets):
-        for j, model in enumerate(models):
-            mask  = df['Dataset'] == dataset
-            mask &= df['Model'] == model
-            mask &= df['Bias Length'] == BIAS_LENGTH
-            mask &= df['Explainer'].isin(explainers)
-            mask &= df['Budget'].isin(BUDGETS)
-            data = df[mask]
-
-            gt_value = None
-            if GROUND_TRUTH_LINE and 'Ground Truth' in data['Explainer'].unique():
-                gt_index = data.loc[data['Explainer'] == 'Ground Truth'].index
-                gt_value = data.loc[gt_index]['Recall'].mean().round(2)
-                data = data.drop(gt_index, axis=0)
-
-            data = data.copy().sort_values(by='Explainer')
-
-            x_name = 'Explainer'
-            data[x_name] = data['Explainer']
-
-            y_name = 'Area Under Recall-Budget Curve'
-            data[y_name] = data['Recall']
-
-            pal = sns.color_palette()
-            pal = np.array(pal)
-            ax = sns.pointplot( data=data, x=x_name, y=y_name, hue='Explainer',
-                    hue_order=hue_order, ci=100, n_boot=1000, join=False,
-                    dodge=False, orient='v', palette=pal[1:], scale=1.5,
-                    ax=axes[i, j])
-
-            if GROUND_TRUTH_LINE and gt_value is not None:
-                ax.axhline(y=0.9, ls='--', color='black',
-                        label='Ground Truth', zorder=0)
-
-            # Remove subplot legends in favor of a single one
-            if ax.get_legend():
-                ax.get_legend().remove()
-            ax.set_ylim(0.0, 1.0)
-            # ax.get_xaxis().set_ticks([])
-            ticks = ax.get_yticks()
-            ax.get_yaxis().set_ticks(ticks[1:])
-            ax.tick_params(axis='x', labelbottom=True)
-
-
-
-def best_count_plot(df, datasets, models, explainers, include_ties=True):
-    # Summing over all datasets, so we just include an empty dataset label
-    fig, axes = plot_utils.get_subplots([''], models, sharex=True, sharey=True)
-
-    # Dont include count for gt
-    if 'Ground Truth' in explainers:
-        explainers.remove('Ground Truth')
-
-    for j, model in enumerate(models):
-        # Sum best count over all datasets
-        counts = {}
-        for explainer in explainers:
-            counts[explainer] = 0
-
-        for dataset in datasets:
-            mask = df['Model'] == model
-            mask &= df['Dataset'] == dataset
-            mask &= df['Bias Length'] == BIAS_LENGTH
-            mask &= df['Explainer'].isin(explainers)
-            mask &= df['Budget'].isin(BUDGETS)
-            data = df[mask]
-
-            print('----')
-            print(model, dataset)
-            mean_recalls = data.groupby('Explainer')['Recall'].mean().round(2)
-            print(mean_recalls)
-            best_explainers = mean_recalls.nlargest(1, keep='all').index
-
-            # handle ties
-            if not include_ties and len(best_explainers) > 1:
-                continue
-            for explainer in best_explainers:
-                counts[explainer] += 1
-
-        best_counts = []
-        for explainer in explainers:
-            best_counts.append(counts[explainer])
-
-        print(counts)
-
-        pal = sns.color_palette()
-        pal = np.array(pal)
-
-        ax = sns.barplot(
-                x=explainers,
-                y=best_counts,
-                orient='v',
-                # palette=pal[1:],
-                palette=pal,
-                ax=axes[0, j])
-
-        # Remove subplot legends in favor of a single one
-        if ax.get_legend():
-            ax.get_legend().remove()
-        ax.set_ylim(0, 6)
-        ax.set_xlabel('Explainer')
-
-        if include_ties:
-            ax.set_ylabel('# Datasets Best (w/ ties)')
-        else:
-            ax.set_ylabel('# Datasets Best (w/o ties)')
-
-        ax.tick_params(axis='x', labelbottom=True)
-
-    return fig, axes
+# def budget_avg_plot(df, datasets, models, explainers, bias_len):
+#     # TODO Remove or test, this code is not up-to-date with other methods
+#     assert False, 'This code is not up-to-date'
+#     fig, axes = plot_utils.get_subplots(datasets, models, sharex=True, sharey=False)
+#
+#     # Dont include bar for gt, instead put vertical line
+#     hue_order = explainers
+#     if GROUND_TRUTH_LINE:
+#         explainers_no_gt = explainers.copy()
+#         explainers_no_gt.remove('Ground Truth')
+#         hue_order = explainers_no_gt
+#
+#     for i, dataset in enumerate(datasets):
+#         for j, model in enumerate(models):
+#             mask  = df['Dataset'] == dataset
+#             mask &= df['Model'] == model
+#             mask &= df['Bias Length'] == bias_len
+#             mask &= df['Explainer'].isin(explainers)
+#             mask &= df['Budget'].isin(BUDGETS)
+#             data = df[mask]
+#
+#             gt_value = None
+#             if GROUND_TRUTH_LINE and 'Ground Truth' in data['Explainer'].unique():
+#                 gt_index = data.loc[data['Explainer'] == 'Ground Truth'].index
+#                 gt_value = data.loc[gt_index]['Recall'].mean().round(2)
+#                 data = data.drop(gt_index, axis=0)
+#
+#             data = data.copy().sort_values(by='Explainer')
+#
+#             x_name = 'Explainer'
+#             data[x_name] = data['Explainer']
+#
+#             y_name = 'Area Under Recall-Budget Curve'
+#             data[y_name] = data['Recall']
+#
+#             pal = sns.color_palette()
+#             pal = np.array(pal)
+#             ax = sns.pointplot( data=data, x=x_name, y=y_name, hue='Explainer',
+#                     hue_order=hue_order, ci=100, n_boot=1000, join=False,
+#                     dodge=False, orient='v', palette=pal[1:], scale=1.5,
+#                     ax=axes[i, j])
+#
+#             if GROUND_TRUTH_LINE and gt_value is not None:
+#                 ax.axhline(y=0.9, ls='--', color='black',
+#                         label='Ground Truth', zorder=0)
+#
+#             # Remove subplot legends in favor of a single one
+#             if ax.get_legend():
+#                 ax.get_legend().remove()
+#             ax.set_ylim(0.0, 1.0)
+#             # ax.get_xaxis().set_ticks([])
+#             ticks = ax.get_yticks()
+#             ax.get_yaxis().set_ticks(ticks[1:])
+#             ax.tick_params(axis='x', labelbottom=True)
+#
+#
+#
+# def best_count_plot(df, datasets, models, explainers, bias_len, include_ties=True):
+#     # Summing over all datasets, so we just include an empty dataset label
+#     fig, axes = plot_utils.get_subplots([''], models, sharex=True, sharey=True)
+#
+#     # Dont include count for gt
+#     if 'Ground Truth' in explainers:
+#         explainers.remove('Ground Truth')
+#
+#     for j, model in enumerate(models):
+#         # Sum best count over all datasets
+#         counts = {}
+#         for explainer in explainers:
+#             counts[explainer] = 0
+#
+#         for dataset in datasets:
+#             mask = df['Model'] == model
+#             mask &= df['Dataset'] == dataset
+#             mask &= df['Bias Length'] == bias_len
+#             mask &= df['Explainer'].isin(explainers)
+#             mask &= df['Budget'].isin(BUDGETS)
+#             data = df[mask]
+#
+#             print('----')
+#             print(model, dataset)
+#             mean_recalls = data.groupby('Explainer')['Recall'].mean().round(2)
+#             print(mean_recalls)
+#             best_explainers = mean_recalls.nlargest(1, keep='all').index
+#
+#             # handle ties
+#             if not include_ties and len(best_explainers) > 1:
+#                 continue
+#             for explainer in best_explainers:
+#                 counts[explainer] += 1
+#
+#         best_counts = []
+#         for explainer in explainers:
+#             best_counts.append(counts[explainer])
+#
+#         print(counts)
+#
+#         pal = sns.color_palette()
+#         pal = np.array(pal)
+#
+#         ax = sns.barplot(
+#                 x=explainers,
+#                 y=best_counts,
+#                 orient='v',
+#                 # palette=pal[1:],
+#                 palette=pal,
+#                 ax=axes[0, j])
+#
+#         # Remove subplot legends in favor of a single one
+#         if ax.get_legend():
+#             ax.get_legend().remove()
+#         ax.set_ylim(0, 6)
+#         ax.set_xlabel('Explainer')
+#
+#         if include_ties:
+#             ax.set_ylabel('# Datasets Best (w/ ties)')
+#         else:
+#             ax.set_ylabel('# Datasets Best (w/o ties)')
+#
+#         ax.tick_params(axis='x', labelbottom=True)
+#
+#     return fig, axes
 
 
 def get_arguments():
@@ -377,19 +370,24 @@ def get_arguments():
         metavar='plot_type',
         help=' | '.join(PLOT_TYPES))
     parser.add_argument(
-            'dir',
-            type=str,
-            metavar='log_directory',
-            help='directory holding the log files')
+        'dir',
+        type=str,
+        metavar='log_directory',
+        help='directory holding the log files')
     parser.add_argument(
-            '-o', '--output',
-            type=str,
-            metavar='output',
-            required=False,
-            default='plot.pdf',
-            help='path to output the plot to')
-
-
+        '-o', '--output',
+        type=str,
+        metavar='output',
+        required=False,
+        default='plot.pdf',
+        help='path to output the plot to')
+    parser.add_argument(
+        '-b', '--bias-len',
+        type=int,
+        metavar='bias_len',
+        required=False,
+        default=BIAS_LENGTH,
+        help='bias length to plot (default = {})'.format(BIAS_LENGTH))
     args = parser.parse_args()
     return args
 

@@ -16,13 +16,16 @@ from models import WeightedNeuralNet, MLP
 MAX_VOCAB = 100
 N_HIDDEN = 10
 BIAS_MIN_DF = 0.20              # Min occurance for words to be bias words
-BIAS_MAX_DF = 0.80              # Max occurance for words to be bias words
+BIAS_MAX_DF = 0.60              # Max occurance for words to be bias words
 
-grid = {
+params = {
     'counts__binary' : [True, False],
 
-    'model__max_epochs' : [10, 20, 30, 40, 50, 70, 100],
-    'model__lr' : [5, 1, 0.9, 0.7, 0.5, 0.1, 0.01, 0.001, 0.0001, 0.00001],
+    'model__max_epochs' : [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 100],
+    'model__lr' : [10, 1, 0.1, 0.01, 0.001, 0.0001, 0.00001],
+    'model__batch_size': [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 100],
+    'model__module__n_hidden': [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 100],
+    'model__callbacks__lr_sched__patience': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 }
 
 pipeline = Pipeline([
@@ -33,32 +36,35 @@ pipeline = Pipeline([
         lambda x: x.toarray(),
         validate=False,
         accept_sparse=True)),
-    ('model', xgb.XGBClassifier(objective="binary:logistic", random_state=42))
-    # ('model', WeightedNeuralNet(
-    #     module=MLP,
-    #     device='cuda',
-    #     callbacks=[
-    #         callbacks.EpochScoring(
-    #             scoring='f1',
-    #             lower_is_better=False,
-    #             name='valid_f1'),
-    #         callbacks.LRScheduler(
-    #             policy='ReduceLROnPlateau',
-    #             monitor='valid_f1',
-    #             patience=3),
-    #         callbacks.EarlyStopping(
-    #             monitor='valid_f1',
-    #             threshold=0.001,
-    #             patience=20),
-    #     ],
-    #     module__n_input=MAX_VOCAB,
-    #     module__n_hidden=N_HIDDEN))
+    ('model', WeightedNeuralNet(
+        module=MLP,
+        device='cuda',
+        callbacks=[
+            ('epoch_score', callbacks.EpochScoring(
+                scoring='f1',
+                lower_is_better=False,
+                name='valid_f1')),
+            ('lr_sched', callbacks.LRScheduler(
+                policy='ReduceLROnPlateau',
+                monitor='valid_f1',
+                patience=3)),
+            ('early_stop', callbacks.EarlyStopping(
+                monitor='valid_f1',
+                threshold=0.001,
+                patience=20)),
+        ],
+        module__n_input=MAX_VOCAB,
+        module__n_hidden=N_HIDDEN))
 ])
 
 
 def main():
+    # for key in pipeline.get_params().keys():
+    #     print(key)
+    # exit()
+
     runlog = {}
-    dataset_path = 'datasets/imdb.csv'
+    dataset_path = 'datasets/newsgroups_atheism.csv'
     train_size = 0.9
     bias_length = 2
 
@@ -81,15 +87,6 @@ def main():
     labels_train_bias = train_df['label_bias'].values
     labels_test_bias = test_df['label_bias'].values
 
-
-    params = {
-        "model__colsample_bytree": uniform(0.7, 0.3),
-        "model__gamma": uniform(0, 0.5),
-        "model__learning_rate": uniform(0.03, 0.3), # default 0.1
-        "model__max_depth": randint(2, 6), # default 3
-        "model__n_estimators": randint(100, 150), # default 100
-        "model__subsample": uniform(0.6, 0.4)
-    }
 
     clf = RandomizedSearchCV(
             pipeline,

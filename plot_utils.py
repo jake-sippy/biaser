@@ -169,3 +169,10 @@ def get_subplots(datasets, models, sharex, sharey):
         axes = np.array(axes).reshape(-1, 1)
 
     return fig, axes
+
+
+def get_real_name(name):
+    if name in real_names:
+        return real_names[name]
+    else:
+        return name
