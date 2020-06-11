@@ -15,13 +15,14 @@ real_names = {
     'dt'                  : 'Decision Tree',
     'rf'                  : 'Random Forest',
     'mlp'                 : 'MLP',
+    'xgb'                 : 'XGBoost',
 
     # Datasets
     'newsgroups_atheism'  : 'Newsgroup (Atheism)',
     'newsgroups_baseball' : 'Newsgroup (Baseball)',
     'newsgroups_ibm'      : 'Newsgroup (IBM)',
     'imdb'                : 'IMDb',
-    'amazon_cell'         : 'Amazon (Cell Phones)',
+    'amazon_cell'         : 'Amazon',
     'amazon_home'         : 'Amazon (Home & Kitchen)',
     'goodreads'           : 'Goodreads',
 
@@ -30,10 +31,14 @@ real_names = {
     'Unbiased'            : 'Original',
     'Biased'              : 'Stained',
     'Aggregate (LIME x 3)': 'LIME x 3',
+    'LIME (n=3)'          : 'LIME x 3',
+    'LIME (n=3, reduced=False)'          : 'LIME x 3',
     'Aggregate (SHAP x 3)': 'SHAP x 3',
+    'SHAP (n=3)'          : 'SHAP x 3',
 
     # Tests
     'bias'                : 'Stain Verification',
+    'budget'              : 'Budget vs. Recall',
 }
 
 
@@ -46,7 +51,12 @@ def load_log_data(log_directory, plot_type, logger):
             logger.debug('Parsing: {}'.format(f))
             path = os.path.join(root, f)
             with open(path, 'r') as f:
-                data = json.load(f)
+                try:
+                    data = json.load(f)
+                except Exception as e:
+                    logger.error('Failed to read file ' + path)
+                    raise e
+
                 if plot_type == 'bias':
                     rows.extend(_log_to_df_bias(data))
                 else:
@@ -85,7 +95,7 @@ def _log_to_df_bias(log_data):
 
     rows = []
     for i, model_type in enumerate(['Original', 'Stained']):
-        for j, region in enumerate(['R', 'Not R']):
+        for j, region in enumerate([r'$R_{orig}$', r'$\neg R$']):
             rows.append([
                     log_data['seed'],
                     log_data['dataset'],
