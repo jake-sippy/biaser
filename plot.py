@@ -1,4 +1,5 @@
 import os
+import copy
 import logging
 import argparse
 
@@ -18,20 +19,20 @@ import plot_utils
 # If None use all models found in logs
 MODEL_ORDER = [
     # 'logistic',
-    # 'dt',
-    # 'rf',
-    # 'xgb',
+    'dt',
+    'rf',
+    'xgb',
     'mlp',
 ]
 
 # If None use all datasets found in logs
 DATASET_ORDER = [
-    'newsgroups_atheism',
-    'newsgroups_baseball',
-    'newsgroups_ibm',
+    # 'newsgroups_atheism',
+    # 'newsgroups_baseball',
+    # 'newsgroups_ibm',
     'imdb',
     'amazon_cell',
-    'amazon_home',
+    # 'amazon_home',
     'goodreads',
 ]
 
@@ -47,7 +48,7 @@ EXPLAINER_ORDER = [
     'Ground Truth',
 ]
 
-BIAS_LENGTH = 3                 # Default bias length to plot
+BIAS_LENGTH = 2                 # Default bias length to plot
 BUDGETS = range(1, 6)           # Range of budgets to include
 GROUND_TRUTH_LINE = True        # Plot dashed line for GT (when available)
 
@@ -85,6 +86,8 @@ def main():
     logger = logging.getLogger(__name__)
     path = os.path.abspath(args.dir)
     df = plot_utils.load_log_data(path, args.plot_type, logger)
+
+    print(df.head())
 
     if args.plot_type not in PLOT_TYPES:
         logger.error('Given unknown plot type: {}'.format(args.plot_type))
@@ -127,20 +130,37 @@ def main():
 
     # Write single legend at top of figure
     handles, labels = axes[0,0].get_legend_handles_labels()
+
+    if args.plot_type == 'bias':
+        print(handles[0])
+        print(handles[0].__dict__)
+        print(handles[0].patches[0])
+        print(handles[0].patches[0].__dict__)
+
+        stained = matplotlib.patches.Patch(
+                facecolor=EXPLAINER_COLORS['Greedy'],
+        )
+        for i in stained.patches:
+            i.set_hatch('//')
+        handles.insert(1, stained)
+        labels.insert(1, r'$R_{stain}$')
+
     if args.plot_type == 'budget':
         handles = handles[1:]
         labels = labels[1:]
 
+    labels.append('Stained')
+
     n_cols = len(labels)
     legend = axes[0,0].legend(handles, labels, frameon=True,
-            bbox_to_anchor=(0.0, 1.3), loc='upper left', ncol=n_cols)
+            bbox_to_anchor=(0.0, 1.4), loc='upper left', ncol=n_cols)
     annotations.append(legend)
 
-
-    title = plt.annotate('[Title]', xy=(0.5, 1.0), xytext=(0, -25),
-            xycoords='figure fraction', textcoords='offset points',
-            size='large', ha='center', va='baseline')
-    annotations.append(title)
+    # title_text = r'{}, $|F| = {}$'.format(test_name, args.bias_len)
+    # title = plt.annotate(title_text, xy=(0.5, 1.0), xytext=(0, -50),
+    #         xycoords='figure fraction', textcoords='offset points',
+    #         size='large', ha='center', va='baseline')
+    # annotations.append(title)
 
     # Add annotations along top specifying model
     pad = 5
@@ -161,22 +181,26 @@ def main():
 
     # Final adjustments and save plot
     if args.plot_type == 'bias':
-        fig.subplots_adjust(top=0.96, bottom=0.03, left=0.2, right=0.95,
+        # fig.subplots_adjust(top=0.85, bottom=0.05, left=0.08, right=0.95,
+        #         hspace=0.2, wspace=0.2)
+        fig.subplots_adjust(top=0.80, bottom=0.05, left=0.08, right=0.95,
                 hspace=0.2, wspace=0.2)
 
     elif args.plot_type == 'budget':
-        fig.subplots_adjust(top=0.95, bottom=0.03, left=0.15, right=0.95,
-                hspace=0.1, wspace=0.2)
+        fig.subplots_adjust(top=0.85, bottom=0.1, left=0.08, right=0.95,
+                hspace=0.25, wspace=0.25)
 
     logger.info('Saving plot to: {}'.format(args.output))
     plt.savefig(
         args.output,
         bbox_extra_artists=annotations,
-        # bbox_inches='tight',
+        bbox_inches='tight',
+        shadow=True,
         format='pdf')
 
 
 def bias_plot(df, datasets, models, bias_len):
+    sns.set_context("paper", font_scale=2.5, rc={"lines.linewidth": 2.5})
     fig, axes = plot_utils.get_subplots(datasets, models, sharex=False, sharey=False)
 
     for i, dataset in enumerate(datasets):
@@ -187,26 +211,41 @@ def bias_plot(df, datasets, models, bias_len):
             mask &= df['Bias Length'] == bias_len
             data = df[mask]
 
-            no_data_msg = "No rows found for {}, {}".format(dataset, model)
-            assert (not data.empty), no_data_msg
+            # no_data_msg = "No rows found for {}, {}".format(dataset, model)
+            # assert (not data.empty), no_data_msg
+
+            if data.empty: continue
 
             ax = sns.barplot(data=data, x='Model Bias', y='Accuracy',
-                hue='Region', hue_order=['R', 'Not R'], ax=axes[i, j])
+                hue='Region', hue_order=[r'$R_{orig}$', r'$\neg R$'], ax=axes[i, j])
+
+            for b, bar in enumerate(ax.patches):
+                if b % 2 == 1:
+                    bar.set_hatch('/')
+            # exit()
 
             # Remove individual subplot legends in favor of a single global one
             ax.get_legend().remove()
-            ax.set_xlabel('')
             ax.set_ylim(0, 1.0)
             ticks = ax.get_yticks()
             ax.get_yaxis().set_ticks(ticks[1:])
+
+            ax.set_xlabel('Model', visible=True)
+
+            if i != len(datasets) - 1:
+                ax.set_xlabel('', visible=False)
+
+            if j != 0:
+                ax.set_ylabel('', visible=False)
 
     return fig, axes
 
 
 def budget_plot(df, datasets, models, explainers, bias_len):
-    sns.set_context("paper", font_scale=1.5, rc={"lines.linewidth": 2.5})
+    sns.set_context("paper", font_scale=2.5, rc={"lines.linewidth": 2.5})
 
-    fig, axes = plot_utils.get_subplots(datasets, models, sharex=True, sharey=True)
+    fig, axes = plot_utils.get_subplots(datasets, models, sharex=False,
+            sharey=False)
 
     # Fill grid of datasets x models
     for i, dataset in enumerate(datasets):
@@ -224,7 +263,7 @@ def budget_plot(df, datasets, models, explainers, bias_len):
             pal = np.array(pal)
 
             # Actual plot call
-            markers = ["s", "P", "X", "."]
+            markers = ["s", "P", "X", "o", "D"]
             ax = sns.lineplot( data=data, x='Budget', y='Recall', hue='Explainer',
                     hue_order=explainers, style='Explainer', style_order=explainers,
                     err_style='bars', markers=markers, dashes=False, ax=axes[i, j],
@@ -234,6 +273,12 @@ def budget_plot(df, datasets, models, explainers, bias_len):
             ax.get_legend().remove()
             ax.set_ylim(0, 1.1)
             ax.get_xaxis().set_ticks(sorted(data['Budget'].unique()))
+
+            if i != len(datasets) - 1:
+                ax.set_xlabel('', visible=False)
+
+            if j != 0:
+                ax.set_ylabel('', visible=False)
 
     return fig, axes
 
