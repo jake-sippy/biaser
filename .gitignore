@@ -8,6 +8,7 @@ shap/
 test*
 old*
 plots/
+pdfs/
 data*/
 models/
 *logs/
