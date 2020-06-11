@@ -36,19 +36,19 @@ N_SAMPLES = 50                  # Number of samples to evaluate each explainer
 N_BAGS = 3                      # Number of bags to create in bagging test
 MIN_R_PERFOMANCE = 0.90         # Minimum accuracy on region R to allow
 MIN_F1_SCORE = 0.50             # Minimum F1-score to allow for biased model
-MAX_RETRIES = 5                 # Maximum retries if model performance is low
-BIAS_LENS = range(1, 4)         # Range of bias lengths to run
+MAX_RETRIES = 3                 # Maximum retries if model performance is low
+BIAS_LENS = range(2, 3)         # Range of bias lengths to run
 
  # Path to toy dataset for testing this scripts functionality
-TOY_DATASET = 'datasets/newsgroups_atheism.csv'
+# TOY_DATASET = 'datasets/newsgroups_atheism.csv'
 # TOY_DATASET = 'datasets/imdb.csv'
-# TOY_DATASET = 'datasets/goodreads.csv'
+TOY_DATASET = 'datasets/goodreads.csv'
 
 MODELS = [
-    'logistic',
-    'dt',
+    # 'logistic',
+    # 'dt',
     'rf',
-    'xgb'
+    # 'xgb'
     # 'mlp',
 ]
 
@@ -69,8 +69,8 @@ def main():
         # Toy flag, only test on 1 small dataset
         datasets.append(TOY_DATASET)
     else:
-        for filename in os.listdir(DATA_DIR):
-            datasets.append(os.path.join(DATA_DIR, filename))
+        for filename in os.listdir(args.data_dir):
+            datasets.append(os.path.join(args.data_dir, filename))
 
     # Build list of arguments
     arguments = []
@@ -84,6 +84,8 @@ def main():
                         'model_type': model_type,
                         'bias_length': bias_len
                     })
+
+    print(arguments)
 
     if pool_size == 1:
         for arg in arguments:
@@ -278,6 +280,12 @@ def setup_args():
         metavar='LOG_DIR',
         default=LOG_PATH,
         help='Log file directory (default = {})'.format(LOG_PATH))
+    parser.add_argument(
+        '--data-dir',
+        type=str,
+        metavar='DATA_DIR',
+        default=DATA_DIR,
+        help='Dataset directory (default = {})'.format(DATA_DIR))
     parser.add_argument(
         '--quiet',
         action='store_true',

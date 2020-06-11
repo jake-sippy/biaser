@@ -16,20 +16,22 @@ from skorch import callbacks
 MIN_OCCURANCE = 0.01            # Min occurance for words to be vectorized
 MAX_OCCURANCE = 1.00            # Max occurance for words to be vectorized
 
-# MLP Features learned through CV 
+# MLP Features learned through CV
 
 
 # (newsgroups)
-# MLP_MAX_VOCAB = 100 
-# MLP_N_HIDDEN = 30
-# MLP_MAX_EPOCHS = 50
-# MLP_LR = 1
+MLP_MAX_VOCAB = 100
+MLP_N_HIDDEN = 70
+MLP_MAX_EPOCHS = 60
+MLP_LR = 1
+MLP_PATIENCE = 4
+MLP_BATCH = 5
 
 # (imdb)
-MLP_MAX_VOCAB = 100 
-MLP_N_HIDDEN = 30
-MLP_MAX_EPOCHS = 100
-MLP_LR = 1e-1
+# MLP_MAX_VOCAB = 100
+# MLP_N_HIDDEN = 30
+# MLP_MAX_EPOCHS = 100
+# MLP_LR = 1e-1
 
 # # IMDb, Amazon
 # MLP_MAX_VOCAB = 150
@@ -78,7 +80,7 @@ pipelines = {
             lambda x: x.toarray(),
             validate=False,
             accept_sparse=True)),
-        ('model', RandomForestClassifier(n_estimators=1000)),
+        ('model', RandomForestClassifier(n_estimators=100)),
     ]),
 
     'xgb': lambda: Pipeline([
@@ -106,6 +108,7 @@ pipelines = {
         ('model', WeightedNeuralNet(
             module=MLP,
             device='cuda',
+            batch_size=MLP_BATCH,
             callbacks=[
                 callbacks.EpochScoring(
                     scoring='f1',
@@ -114,7 +117,7 @@ pipelines = {
                 callbacks.LRScheduler(
                     policy='ReduceLROnPlateau',
                     monitor='valid_f1',
-                    patience=3),
+                    patience=MLP_PATIENCE),
                 callbacks.EarlyStopping(
                     monitor='valid_f1',
                     threshold=0.001,
