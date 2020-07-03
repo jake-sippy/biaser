@@ -5,6 +5,7 @@ import zipfile
 import tarfile
 import argparse
 import pandas as pd
+import numpy as np
 from urllib.request import urlopen
 import requests
 from sklearn.datasets import fetch_20newsgroups
@@ -85,6 +86,10 @@ def load_amazon_cell(path):
     dataset['overall'] = dataset['overall'].map(
             {1:0, 2:0, 4:1, 5:1}
     )
+
+    dataset.replace('', np.nan, inplace=True)
+    dataset.dropna(axis=0, inplace=True)
+
     dataset.to_csv(filename, index=False, header=False,
             columns=['reviewText', 'overall'])
     print('done')
@@ -196,8 +201,8 @@ if __name__ == '__main__':
     # Load datasets
     print('Downloading datasets')
     load_imdb(directory)
-    load_amazon_cell(directory)
-    load_goodreads(directory)
+    # load_amazon_cell(directory)
+    # load_goodreads(directory)
 
     # Old Datasets
     # load_amazon_home(directory)

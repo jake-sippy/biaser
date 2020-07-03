@@ -33,7 +33,7 @@ class RobertaLarge:
 
     def __init__(self,
             model_path=None,
-            cuda_device=-1):
+            cuda_device=0):
         # model_path = model_path or LSTM_MODEL_PATH
         model_path = model_path or ROBERTA_MODEL_PATH
         self.predictor = Predictor.from_path(model_path,
@@ -71,17 +71,24 @@ class RobertaLarge:
             prob_list.append(self.predictor.predict_instance(instance)["probs"])
         return np.vstack(prob_list)
 
-    def explain(self, sentence, use_simple=False):
+    def explain(self, sentence, method='LIME'):
         # sentence must be of type str - a single str input
-        # There is probably a cleaner way to grab the tokens, need to check why saliency_interpret... isn't returning tokens?
-        #tokens = [t.text for t in self.predictor.json_to_labeled_instances({"sentence": sentence})[0].fields["tokens"].tokens]
+        # There is probably a cleaner way to grab the tokens, need to check why
+        # saliency_interpret... isn't returning tokens?
+        # tokens = [t.text for t in self.predictor.json_to_labeled_instances({"sentence": sentence})[0].fields["tokens"].tokens]
         #salience = self.explainer.saliency_interpret_from_json({"sentence": sentence})['instance_1']['grad_input_1']
+
         tokens = self.tokenizer(sentence)
-        if use_simple:
-            explainer = self.explainer_simple
-        else:
+        if method == 'LIME':
+            explainer = self.explainer_lime
+        elif method == 'integrate':
             explainer = self.explainer_integrate
-        salience = explainer.saliency_interpret_from_json({"sentence": sentence})['instance_1']['grad_input_1'][1:-1]
+        elif method == 'simple':
+            explainer = self.explainer_simple
+
+        explanation = explainer.saliency_interpret_from_json({"sentence": sentence})
+        salience = explanation['instance_1']['grad_input_1'][1:-1]
+
         return self._segment_with_tokens(
             sentence,
             [(tokens[i], salience[i]) for i in range(len(tokens))]
@@ -192,10 +199,13 @@ class CustomTextDatasetReader(DatasetReader):
 
 @DatasetReader.register("custom_text_csv")
 class CustomTextDatasetReader(DatasetReader):
+
     def __init__(self,
             token_indexers: Dict[str, TokenIndexer]=None,
             balance_classes=False,
             **kwargs):
+
+        self.line = 0
         super().__init__(**kwargs)
         # max_length ensures that we truncate the input
         self._tokenizer = PretrainedTransformerTokenizer(model_name="roberta-base",
@@ -205,6 +215,7 @@ class CustomTextDatasetReader(DatasetReader):
 
     @overrides
     def text_to_instance(self, doc, label=None):
+        # self.line += 1
         fields: Dict[str, Field] = {}
         tokens = self._tokenizer.tokenize(doc)
         if len(tokens) == 0 or tokens is None:

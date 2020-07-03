@@ -33,6 +33,31 @@ def load_dataset(data_path, train_size, runlog, quiet=False):
             test_size=1-train_size)
 
 
+def oversample(train_df, quiet=False):
+    print('\tORIG_BALANCE:')
+    counts = train_df['biased'].value_counts()
+    not_R_count = counts[0]
+    R_count = counts[1]
+    print('\t\t R: {}'.format(R_count))
+    print('\t\t~R: {}'.format(not_R_count))
+
+    diff = not_R_count - R_count
+    if diff > 0:
+        new_examples = train_df[train_df['biased']].sample(diff * 2, replace=True)
+        train_df = train_df.append(new_examples)
+    else:
+        assert False
+
+    print('\tNEW_BALANCE:')
+    counts = train_df['biased'].value_counts()
+    not_R_count = counts[0]
+    R_count = counts[1]
+    print('\t\t R: {}'.format(R_count))
+    print('\t\t~R: {}'.format(not_R_count))
+
+    return train_df
+
+
 def train_models(model_constructor, train_df, runlog, bias_only=False, quiet=False):
     if not quiet: print('Training unbiased and biased models...')
     if not quiet: print('\tMODEL_TYPE = {}'.format(runlog['model_type']))
@@ -101,56 +126,49 @@ def train_models(model_constructor, train_df, runlog, bias_only=False, quiet=Fal
 # Split test data into R and ~R and compute the accruacies of the two models
 def evaluate_models(model_orig, model_bias, test_df, runlog, quiet=False):
     if not quiet: print('Evaluating unbiased and biased models on test set...')
+
+    X = test_df['reviews'].values
+    y_orig = test_df['label_orig'].values
+    y_bias = test_df['label_bias'].values
+
+    y_pred_orig = model_orig.predict(X)
+    y_pred_bias = model_bias.predict(X)
+
+    test_df['predict_orig'] = y_pred_orig
+    test_df['predict_bias'] = y_pred_bias
+
+    runlog['orig_test_acc'] = accuracy_score(y_orig, y_pred_orig)
+    runlog['bias_test_acc'] = accuracy_score(y_bias, y_pred_bias)
+    runlog['orig_test_f1'] = f1_score(y_orig, y_pred_orig)
+    runlog['bias_test_f1'] = f1_score(y_bias, y_pred_bias)
+
     mask = test_df['biased']
     test_r = test_df[mask]
     test_nr = test_df[~mask]
 
-    X_r = test_r['reviews'].values
-    X_nr = test_nr['reviews'].values
-
     # Get original model's accuracy on R and ~R
     y_r = test_r['label_orig'].values
     y_nr = test_nr['label_orig'].values
-    pred_r = model_orig.predict(X_r)
-    pred_nr = model_orig.predict(X_nr)
-    print(y_r)
-    print(pred_r)
+    pred_r = test_r['predict_orig'].values
+    pred_nr = test_nr['predict_orig'].values
     orig_r_acc = accuracy_score(y_r, pred_r)
     orig_nr_acc = accuracy_score(y_nr, pred_nr)
 
     # Get biased model's accuracy on R and ~R
     y_r = test_r['label_bias'].values
     y_nr = test_nr['label_bias'].values
-    pred_r = model_bias.predict(X_r)
-    pred_nr = model_bias.predict(X_nr)
+    pred_r = test_r['predict_bias'].values
+    pred_nr = test_nr['predict_bias'].values
     bias_r_acc = accuracy_score(y_r, pred_r)
     bias_nr_acc = accuracy_score(y_nr, pred_nr)
+
+    # Get overall accuracy and f1-score
+
 
     if not quiet: print('\t               R       !R')
     if not quiet: print('\torig model | {0:.3f} | {1:.3f}'.format(orig_r_acc, orig_nr_acc))
     if not quiet: print('\tbias model | {0:.3f} | {1:.3f}'.format(bias_r_acc, bias_nr_acc))
     runlog['results'] = [[orig_r_acc, orig_nr_acc], [bias_r_acc, bias_nr_acc]]
-
-
-# Split test data into R and ~R and compute the accruacies of the two models
-def evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=False):
-    if not quiet: print('Evaluating unbiased and biased models on test set...')
-    X = test_df['reviews'].values
-    y_orig = test_df['label_orig'].values
-    y_bias = test_df['label_bias'].values
-
-    # Get original model's accuracy on R and ~R
-    y_pred_orig = model_orig.predict(X)
-    y_pred_bias = model_bias.predict(X)
-    runlog['orig_test_acc'] = accuracy_score(y_orig, y_pred_orig)
-    runlog['bias_test_acc'] = accuracy_score(y_bias, y_pred_bias)
-    runlog['orig_test_f1'] = f1_score(y_orig, y_pred_orig)
-    runlog['bias_test_f1'] = f1_score(y_bias, y_pred_bias)
-
-    if not quiet: print('\torig model accuracy:', runlog['orig_test_acc'])
-    if not quiet: print('\torig model f1:', runlog['orig_test_f1'])
-    if not quiet: print('\tbias model accuracy:', runlog['bias_test_acc'])
-    if not quiet: print('\tbias model f1:', runlog['bias_test_f1'])
 
 
 def save_log(log_dir, runlog, quiet=False):

@@ -9,15 +9,28 @@ class TooManyAttemptsError(Exception):
     pass
 
 class Bias:
+    # Superclass
+
     def bias(self, instances, labels):
         # return (biased_labels, was_biased)
         raise NotImplemented
+
+
+    def build_df_from_df(self, df, runlog):
+        columns = ['reviews', 'label_orig', 'label_bias', 'biased', 'flipped']
+        reviews = df['reviews'].values
+        labels_orig = df['labels'].values
+        labels_bias, biased, flipped = self.bias(reviews, labels_orig, runlog)
+        data = zip(reviews, labels_orig, labels_bias, biased, flipped)
+        return pd.DataFrame(data=data, columns=columns)
+
 
     def build_df(self, reviews, labels_orig, runlog):
         columns = ['reviews', 'label_orig', 'label_bias', 'biased', 'flipped']
         labels_bias, biased, flipped = self.bias(reviews, labels_orig, runlog)
         data = zip(reviews, labels_orig, labels_bias, biased, flipped)
         return pd.DataFrame(data=data, columns=columns)
+
 
 
 class ComplexBias(Bias):

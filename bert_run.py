@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import shutil
 import argparse
 from multiprocessing import Pool
 from allennlp.training.trainer import Trainer
@@ -44,13 +45,13 @@ N_SAMPLES = 50                  # Number of samples to evaluate each explainer
 N_BAGS = 3                      # Number of bags to create in bagging test
 MIN_R_PERFOMANCE = 0.90         # Minimum accuracy on region R to allow
 MIN_F1_SCORE = 0.50             # Minimum F1-score to allow for biased model
-MAX_RETRIES = 3                 # Maximum retries if model performance is low
-BIAS_LENS = range(2, 3)         # Range of bias lengths to run
+MAX_RETRIES = 1                 # Maximum retries if model performance is low
+BIAS_LENS = range(1, 2)         # Range of bias lengths to run
 
 
 # BERT specific changes
 MODEL_TYPE = 'roberta'
-TMP_DIR = '/tmp/'
+TMP_DIR = os.path.join('/tmp', 'bert_data')
 
  # Path to toy dataset for testing this scripts functionality
 TOY_DATASET = 'datasets/imdb.csv'
@@ -99,10 +100,12 @@ def run_seed(arguments):
     dataset = arguments['dataset']
     model_type = 'roberta'
     bias_length = arguments['bias_length']
+    dataset_name = dataset.split('/')[-1].split('.csv')[0]
 
     if 'train_attempts' not in arguments:
         np.random.seed(seed)
         os.environ['MKL_NUM_THREADS'] = '1'
+        os.environ['ALLENNLP_LOG_LEVEL'] = 'WARNING'
         torch.set_num_threads(1)
         arguments['train_attempts'] = 1
 
@@ -118,42 +121,71 @@ def run_seed(arguments):
     runlog['seed']       = seed
     runlog['test_name']  = args.test
     runlog['model_type'] = model_type
+    runlog['dataset']    = dataset_name
     runlog['bias_len']   = bias_length
     # runlog['min_occur']  = MIN_OCCURANCE
     # runlog['max_occur']  = MAX_OCCURANCE
 
-    # TODO transer beer.jsonnet to here
-    SERIAL_DIR = 'model_save'
+    SERIAL_DIR = 'save'
+    ORIG_NAME = 'orig_model'
+    BIAS_NAME = 'bias_model'
     PARAM_FILE = 'roberta.jsonnet'
 
-    train_data_path,      \
-    validation_data_path, \
-    test_data_path = train_val_split_dataset(dataset, TRAIN_SIZE)
+    orig_train_path, \
+    orig_valid_path, \
+    orig_test_path,  \
+    bias_train_path, \
+    bias_valid_path, \
+    bias_test_path,  \
+    train_df,        \
+    valid_df,        \
+    test_df = split_dataset(dataset, bias_length, runlog)
 
-    overrides = json.dumps({
-        'train_data_path'      : train_data_path,
-        'validation_data_path' : validation_data_path,
-        'test_data_path'       : test_data_path,
+    orig_model_path = os.path.join(SERIAL_DIR, ORIG_NAME)
+    bias_model_path = os.path.join(SERIAL_DIR, BIAS_NAME)
+
+    if not args.recover:
+        if os.path.exists(orig_model_path):
+            shutil.rmtree(orig_model_path)
+        if os.path.exists(bias_model_path):
+            shutil.rmtree(bias_model_path)
+
+    orig_overrides = json.dumps({
+        'train_data_path'      : orig_train_path,
+        'validation_data_path' : orig_valid_path,
+        'test_data_path'       : orig_test_path,
     })
 
-    model = train_model_from_file(
+    train_model_from_file(
         parameter_filename=PARAM_FILE,
-        serialization_dir=SERIAL_DIR,
-        overrides=overrides
+        serialization_dir=orig_model_path,
+        overrides=orig_overrides,
+        recover=args.recover,
     )
 
-    print(model)
-    exit()
+    bias_overrides = json.dumps({
+        'train_data_path'      : bias_train_path,
+        'validation_data_path' : bias_valid_path,
+        'test_data_path'       : bias_test_path,
+    })
 
-    model_orig, \
-    model_bias, \
-    train_df,   \
-    test_df,    \
-    bias_words = build_biased_model(dataset, model_type, bias_length, runlog)
+    train_model_from_file(
+        parameter_filename=PARAM_FILE,
+        serialization_dir=bias_model_path,
+        overrides=bias_overrides,
+        recover=args.recover,
+    )
+
+    orig_model = RobertaLarge(model_path=orig_model_path)
+    bias_model = RobertaLarge(model_path=bias_model_path)
 
     # Evaluate both models on biased region R and ~R
-    utils.evaluate_models(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
-    utils.evaluate_models_test(model_orig, model_bias, test_df, runlog, quiet=args.quiet)
+    utils.evaluate_models(orig_model, bias_model, test_df, runlog, quiet=args.quiet)
+
+    if args.test == 'bias_test':
+        if not args.no_log:
+            utils.save_log(args.log_dir, runlog, quiet=args.quiet)
+        return
 
     R_bias_acc = runlog['results'][1][0]
     bias_f1 = runlog['bias_test_f1']
@@ -169,10 +201,6 @@ def run_seed(arguments):
             MIN_F1_SCORE, bias_f1))
         arguments['train_attempts'] += 1
         run_seed(arguments)
-        return
-
-    if (not args.no_log) and args.test == 'bias_test':
-        utils.save_log(args.log_dir, runlog, quiet=args.quiet)
         return
 
     if args.test == 'budget_test':
@@ -199,40 +227,19 @@ def run_seed(arguments):
         return
 
 
-def train_val_split_dataset(dataset_path, train_size):
+def split_dataset(dataset_path, bias_length, runlog, quiet=False):
+    # Load and split full dataset
     with open(dataset_path, 'r') as f:
-        lines = f.readlines()
+        data = pd.read_csv(dataset_path, header=None, names=['reviews', 'labels'])
 
-    train_val_lines, test_lines = train_test_split(
-            lines, test_size=0.2)
-
-    train_lines, val_lines = train_test_split(
-            train_val_lines, train_size=0.5)
+    train_val_data, test_data = train_test_split(data, test_size=0.2)
+    train_data, val_data = train_test_split(train_val_data, train_size=0.5)
 
     if not os.path.exists(TMP_DIR):
         os.makedirs(TMP_DIR)
 
-    train_path = os.path.join(TMP_DIR, 'train.csv')
-    valid_path = os.path.join(TMP_DIR, 'valid.csv')
-    test_path  = os.path.join(TMP_DIR, 'test.csv')
-
-    with open(train_path, 'w') as f:
-        f.writelines(train_lines)
-
-    with open(valid_path, 'w') as f:
-        f.writelines(val_lines)
-
-    with open(test_path, 'w') as f:
-        f.writelines(test_lines)
-
-    return train_path, valid_path, test_path
-
-
-def build_biased_model(dataset_path, model_type, bias_length, runlog):
-    reviews_train, \
-    reviews_test,  \
-    labels_train,  \
-    labels_test = utils.load_dataset(dataset_path, TRAIN_SIZE, runlog, quiet=args.quiet)
+    reviews_train = train_data['reviews'].values
+    labels_train= train_data['labels'].values
 
     bias_obj = biases.ComplexBias(
             reviews_train,
@@ -241,16 +248,51 @@ def build_biased_model(dataset_path, model_type, bias_length, runlog):
             BIAS_MIN_DF,
             BIAS_MAX_DF,
             runlog,
-            quiet=args.quiet)
+            quiet=quiet)
 
-    train_df = bias_obj.build_df(reviews_train, labels_train, runlog)
-    test_df = bias_obj.build_df(reviews_test, labels_test, runlog)
+    # Build dataframes with orig and bias labels
+    train_df = bias_obj.build_df_from_df(train_data, runlog)
+    valid_df = bias_obj.build_df_from_df(val_data, runlog)
+    test_df  = bias_obj.build_df_from_df(test_data, runlog)
 
-    model_pipeline = pipelines[model_type]
-    model_orig, model_bias = utils.train_models(model_pipeline, train_df, runlog,
-            quiet=args.quiet)
+    train_df = utils.oversample(train_df)
+    valid_df = utils.oversample(valid_df)
+    test_df = utils.oversample(test_df)
 
-    return model_orig, model_bias, train_df, test_df, bias_obj.bias_words
+    FAST_FRAC = 0.2
+    train_df = train_df.sample(frac=FAST_FRAC, replace=False)
+    valid_df = valid_df.sample(frac=0.01, replace=False)
+    test_df = test_df.sample(frac=FAST_FRAC, replace=False)
+
+
+    orig_train_path = os.path.join(TMP_DIR, 'orig_train.csv')
+    orig_valid_path = os.path.join(TMP_DIR, 'orig_valid.csv')
+    orig_test_path  = os.path.join(TMP_DIR, 'orig_test.csv')
+
+    bias_train_path = os.path.join(TMP_DIR, 'bias_train.csv')
+    bias_valid_path = os.path.join(TMP_DIR, 'bias_valid.csv')
+    bias_test_path  = os.path.join(TMP_DIR, 'bias_test.csv')
+
+    orig_cols = ['reviews', 'label_orig']
+    bias_cols = ['reviews', 'label_bias']
+
+    train_df.to_csv(orig_train_path, header=False, index=False, columns=orig_cols)
+    valid_df.to_csv(orig_valid_path, header=False, index=False, columns=orig_cols)
+    test_df.to_csv(orig_test_path, header=False, index=False, columns=orig_cols)
+
+    train_df.to_csv(bias_train_path, header=False, index=False, columns=bias_cols)
+    valid_df.to_csv(bias_valid_path, header=False, index=False, columns=bias_cols)
+    test_df.to_csv(bias_test_path, header=False, index=False, columns=bias_cols)
+
+    return orig_train_path, \
+           orig_valid_path, \
+           orig_test_path,  \
+           bias_train_path, \
+           bias_valid_path, \
+           bias_test_path,  \
+           train_df,        \
+           valid_df,        \
+           test_df
 
 
 def explainers_budget_test(
@@ -350,6 +392,10 @@ def setup_args():
         '--toy',
         action='store_true',
         help='Run a toy version of the test')
+    parser.add_argument(
+        '--recover',
+        action='store_true',
+        help='Try to recover from a trained model')
 
     args = parser.parse_args()
 

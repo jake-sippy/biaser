@@ -8,7 +8,7 @@ local dataset = "beer";
 
 {
   "dataset_reader": {
-    "type": "custom_text",
+    "type": "custom_text_csv",
     "token_indexers": {
       "tokens": {
         "type": "pretrained_transformer",
@@ -40,12 +40,12 @@ local dataset = "beer";
     "batch_sampler": {
       "type": "bucket",
       "sorting_keys": ["tokens"],
-      "batch_size" : 8 
+      "batch_size" : 8
     }
   },
   "trainer": {
-    "num_epochs": 10,
-    "cuda_device" : 1,
+    "num_epochs": 1,
+    "cuda_device" : 0,
     "validation_metric": "+accuracy",
     "learning_rate_scheduler": {
       "type": "slanted_triangular",
