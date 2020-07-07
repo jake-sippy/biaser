@@ -72,7 +72,7 @@ class RobertaLarge:
             prob_list.append(self.predictor.predict_instance(instance)["probs"])
         return np.vstack(prob_list)
 
-    def explain(self, sentence, method='LIME'):
+    def explain(self, sentence, method='LIME', budget=5):
         # sentence must be of type str - a single str input
         # There is probably a cleaner way to grab the tokens, need to check why
         # saliency_interpret... isn't returning tokens?
@@ -82,22 +82,26 @@ class RobertaLarge:
         tokens = self.tokenizer(sentence)
         if method == 'LIME':
             return self.explain_lime(sentence)
+        elif method == 'greedy':
+            # explainer = self.explainer_greedy
+            raise NotImplementedError
         elif method == 'integrate':
             explainer = self.explainer_integrate
         elif method == 'simple':
             explainer = self.explainer_simple
-        elif method == 'greedy':
-            raise NotImplementedError
-            # explainer = self.explainer_greedy
 
-        explanation = explainer.saliency_interpret_from_json({"sentence": "test"})
-        # explanation = explainer.saliency_interpret_from_json({"sentence": sentence})
+        explanation = explainer.saliency_interpret_from_json({"sentence": sentence})
         salience = explanation['instance_1']['grad_input_1'][1:-1]
 
-        return self._segment_with_tokens(
-            sentence,
-            [(tokens[i], salience[i]) for i in range(len(tokens))]
-        )
+        pairs = list(zip(tokens, salience))
+        pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+        return pairs[:budget]
+
+        # OLD
+        # return self._segment_with_tokens(
+        #     sentence,
+        #     [(tokens[i], salience[i]) for i in range(len(tokens))]
+        # )
 
     def _explain_lime_raw(self, sentence, num_features=None, num_samples=5000):
         if num_features == None:
@@ -136,9 +140,7 @@ class RobertaLarge:
         # NEW
         predicted = 1
         feats_importances = exp.as_list(label=predicted)
-        print(feats_importances)
-        exit()
-        # return feats[:num_features]
+        return feats_importances[:num_features]
 
     def _segment_with_tokens(self, text, token_weights):
         """Segment a string around the tokens created by a passed-in tokenizer"""

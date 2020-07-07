@@ -44,7 +44,8 @@ local dataset = "beer";
     }
   },
   "trainer": {
-    "num_epochs": 1,
+    "num_epochs": 20,
+    "patience": 3,
     "cuda_device" : 0,
     "validation_metric": "+accuracy",
     "learning_rate_scheduler": {

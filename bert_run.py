@@ -46,7 +46,7 @@ N_BAGS = 3                      # Number of bags to create in bagging test
 MIN_R_PERFOMANCE = 0.90         # Minimum accuracy on region R to allow
 MIN_F1_SCORE = 0.50             # Minimum F1-score to allow for biased model
 MAX_RETRIES = 1                 # Maximum retries if model performance is low
-BIAS_LENS = range(1, 2)         # Range of bias lengths to run
+BIAS_LENS = range(2, 3)         # Range of bias lengths to run
 
 
 # BERT specific changes
@@ -141,8 +141,9 @@ def run_seed(arguments):
     test_df,         \
     bias_words = split_dataset(dataset, bias_length, runlog)
 
-    orig_model_path = os.path.join(SERIAL_DIR, ORIG_NAME)
-    bias_model_path = os.path.join(SERIAL_DIR, BIAS_NAME)
+    seed = str(seed)
+    orig_model_path = os.path.join(SERIAL_DIR, ORIG_NAME, dataset_name, seed)
+    bias_model_path = os.path.join(SERIAL_DIR, BIAS_NAME, dataset_name, seed)
 
     if not args.recover:
         if os.path.exists(orig_model_path):
@@ -150,18 +151,20 @@ def run_seed(arguments):
         if os.path.exists(bias_model_path):
             shutil.rmtree(bias_model_path)
 
-    orig_overrides = json.dumps({
-        'train_data_path'      : orig_train_path,
-        'validation_data_path' : orig_valid_path,
-        'test_data_path'       : orig_test_path,
-    })
+    # TODO re-add orig model
 
-    train_model_from_file(
-        parameter_filename=PARAM_FILE,
-        serialization_dir=orig_model_path,
-        overrides=orig_overrides,
-        recover=args.recover,
-    )
+    # orig_overrides = json.dumps({
+    #     'train_data_path'      : orig_train_path,
+    #     'validation_data_path' : orig_valid_path,
+    #     'test_data_path'       : orig_test_path,
+    # })
+    #
+    # train_model_from_file(
+    #     parameter_filename=PARAM_FILE,
+    #     serialization_dir=orig_model_path,
+    #     overrides=orig_overrides,
+    #     recover=args.recover,
+    # )
 
     bias_overrides = json.dumps({
         'train_data_path'      : bias_train_path,
@@ -177,11 +180,13 @@ def run_seed(arguments):
     )
 
 
-    orig_model = RobertaLarge(model_path=orig_model_path)
-    bias_model = RobertaLarge(model_path=bias_model_path)
+    # orig_model = RobertaLarge(model_path=orig_model_path)
+    bias_model = RobertaLarge(
+            model_path=bias_model_path,
+            cuda_device=int(seed-1))
 
     # Evaluate both models on biased region R and ~R
-    utils.evaluate_models(orig_model, bias_model, test_df, runlog, quiet=args.quiet)
+    # utils.evaluate_models(orig_model, bias_model, test_df, runlog, quiet=args.quiet)
 
     if args.test == 'bias_test':
         if not args.no_log:
@@ -215,6 +220,9 @@ def run_seed(arguments):
             'LIME': LimeExplainer,
             'SHAP':ShapExplainer,
         }
+
+        exps = ['LIME']  #, 'integrate', 'simple']
+        # exps = ['integrate']
         n_samples = 1 if args.toy else N_SAMPLES
         explainers_budget_test(bias_model, exps, bias_words, train_df, n_samples, runlog)
         return
@@ -316,18 +324,18 @@ def explainers_budget_test(
     runlog['n_samples'] = n_samples
     bias_length = len(bias_words)
 
-    #TODO test and remove
-    print('Form of input:')
-    print(X_explain[0])
-
-    print('integrate:')
-    res = model_bias.explain(X_explain[0], method='integrate')
-    print(res)
-
-    print('simple:')
-    res = model_bias.explain(X_explain[0], method='simple')
-    print(res)
-    exit()
+    # #TODO test and remove
+    # print('Form of input:')
+    # print(X_explain[0])
+    #
+    # print('integrate:')
+    # res = model_bias.explain(X_explain[0], method='integrate')
+    # print(res)
+    #
+    # print('simple:')
+    # res = model_bias.explain(X_explain[0], method='simple')
+    # print(res)
+    # exit()
 
     # Handle interpretable models by adding their respective explainer
     if runlog['model_type'] == 'logistic':
@@ -338,28 +346,47 @@ def explainers_budget_test(
     # Compute recall of exapliners
     for explainer_name in explainers:
         runlog['explainer'] = explainer_name
-        explainer = explainers[explainer_name](model_bias, X_all)
+        # explainer = explainers[explainer_name](model_bias, X_all)
         for budget in range(1, MAX_BUDGET + 1):
             runlog['budget'] = budget
 
             # Compute the average recall over `n_samples` instances
             avg_recall = 0
             for i in range(n_samples):
+                print(i)
+                print(n_samples)
 
-                importance_pairs = explainer.explain(X_explain[i], budget)
-                top_feats = [str(feat) for feat, _ in importance_pairs]
+                print(X_explain[i])
+                importance_pairs = model_bias.explain(
+                        X_explain[i],
+                        method=explainer_name,
+                        budget=budget
+                )
+                print(importance_pairs)
+
+                top_feats = [str(feat).lower() for feat, _ in importance_pairs]
                 importances = [float(imp) for _, imp in importance_pairs]
+                print(top_feats)
+                print(importances)
                 runlog['top_features'] = top_feats
                 runlog['feature_importances'] = importances
                 runlog['example_id'] = i
+
+                print(bias_words)
+
                 recall = 0
                 for word in bias_words:
                     if word in top_feats:
                         recall += 1
                 runlog['recall'] = recall / bias_length
 
+                print('recall = ' + str(recall / bias_length))
+
+
+                print('saving')
                 if not args.no_log:
                     utils.save_log(args.log_dir, runlog, quiet=args.quiet)
+                print('saved')
 
 
 def setup_args():
