@@ -33,7 +33,7 @@ class RobertaLarge:
 
     def __init__(self,
             model_path=None,
-            cuda_device=0):
+            cuda_device=1):
         # model_path = model_path or LSTM_MODEL_PATH
         model_path = model_path or ROBERTA_MODEL_PATH
         self.predictor = Predictor.from_path(model_path,
@@ -50,9 +50,10 @@ class RobertaLarge:
         ]
         # reset the tokenizer to remove separators
         self.tokenizer = lambda s: [t.text.replace("Ġ", "").replace('ĉ', "") for t in _tokenizer.tokenize(s)][1:-1]
-        self.explainer_lime = LimeTextExplainer(class_names=class_names) # , split_expression=self.tokenizer
+        self.explainer_lime = LimeTextExplainer(class_names=class_names, split_expression=self.tokenizer)
         self.explainer_integrate = IntegratedGradient(self.predictor)
         self.explainer_simple = SimpleGradient(self.predictor)
+        # self.explainer_greedy = GreedyExplainer(self.predictor)
 
     def predict(self, docs):
         """
@@ -80,13 +81,17 @@ class RobertaLarge:
 
         tokens = self.tokenizer(sentence)
         if method == 'LIME':
-            explainer = self.explainer_lime
+            return self.explain_lime(sentence)
         elif method == 'integrate':
             explainer = self.explainer_integrate
         elif method == 'simple':
             explainer = self.explainer_simple
+        elif method == 'greedy':
+            raise NotImplementedError
+            # explainer = self.explainer_greedy
 
-        explanation = explainer.saliency_interpret_from_json({"sentence": sentence})
+        explanation = explainer.saliency_interpret_from_json({"sentence": "test"})
+        # explanation = explainer.saliency_interpret_from_json({"sentence": sentence})
         salience = explanation['instance_1']['grad_input_1'][1:-1]
 
         return self._segment_with_tokens(
@@ -98,23 +103,42 @@ class RobertaLarge:
         if num_features == None:
             num_features = len(self.tokenizer(sentence))
         return self.explainer_lime.explain_instance(
-            sentence, self.predict_proba, top_labels=2, num_features=num_features, num_samples=num_samples) #
+            sentence,
+            self.predict_proba,
+            top_labels=2,
+            num_features=num_features,
+            num_samples=num_samples)
 
-    def explain_lime(self, sentence, num_samples=5000):
+    def explain_lime(self, sentence, num_features=10, num_samples=5000):
         # get the prediction
-        exp = self._explain_lime_raw(sentence, num_samples=num_samples)
+        # exp = self._explain_lime_raw(sentence, num_features=num_features, num_samples=num_samples)
+
+        exp = self.explainer_lime.explain_instance(
+            text_instance=sentence,
+            classifier_fn=self.predict_proba,
+            num_features=num_features,
+            num_samples=num_samples)
         ## NOT USING self.predict_proba because I need label idx that matches the max probability, not label.
-        predicted = np.argmax(self.predict_proba([sentence])[0])
+        # predicted = np.argmax(self.predict_proba([sentence])[0])
         # get the explanation for the selected class
         # get the tokens
-        indexes = exp.as_map()[predicted]
-        tokens = exp.as_list(label=predicted)
-        tokens = [[indexes[i], t[0], t[1]] for i, t in enumerate(tokens)]
-        tokens = sorted(tokens, key=lambda t: t[0])
-        return self._segment_with_tokens(
-            sentence,
-            [t[1:] for t in tokens]
-        )
+
+        # OLD
+        # indexes = exp.as_map()[predicted]
+        # tokens = exp.as_list(label=predicted)
+        # tokens = [[indexes[i], t[0], t[1]] for i, t in enumerate(tokens)]
+        # tokens = sorted(tokens, key=lambda t: t[0])
+        # return self._segment_with_tokens(
+        #     sentence,
+        #     [t[1:] for t in tokens]
+        # )
+
+        # NEW
+        predicted = 1
+        feats_importances = exp.as_list(label=predicted)
+        print(feats_importances)
+        exit()
+        # return feats[:num_features]
 
     def _segment_with_tokens(self, text, token_weights):
         """Segment a string around the tokens created by a passed-in tokenizer"""

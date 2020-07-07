@@ -16,6 +16,7 @@ real_names = {
     'rf'                  : 'Random Forest',
     'mlp'                 : 'MLP',
     'xgb'                 : 'XGBoost',
+    'roberta'             : 'RoBERTa',
 
     # Datasets
     'newsgroups_atheism'  : 'Newsgroup (Atheism)',

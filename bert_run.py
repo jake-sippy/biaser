@@ -105,7 +105,6 @@ def run_seed(arguments):
     if 'train_attempts' not in arguments:
         np.random.seed(seed)
         os.environ['MKL_NUM_THREADS'] = '1'
-        os.environ['ALLENNLP_LOG_LEVEL'] = 'WARNING'
         torch.set_num_threads(1)
         arguments['train_attempts'] = 1
 
@@ -139,7 +138,8 @@ def run_seed(arguments):
     bias_test_path,  \
     train_df,        \
     valid_df,        \
-    test_df = split_dataset(dataset, bias_length, runlog)
+    test_df,         \
+    bias_words = split_dataset(dataset, bias_length, runlog)
 
     orig_model_path = os.path.join(SERIAL_DIR, ORIG_NAME)
     bias_model_path = os.path.join(SERIAL_DIR, BIAS_NAME)
@@ -176,6 +176,7 @@ def run_seed(arguments):
         recover=args.recover,
     )
 
+
     orig_model = RobertaLarge(model_path=orig_model_path)
     bias_model = RobertaLarge(model_path=bias_model_path)
 
@@ -187,21 +188,25 @@ def run_seed(arguments):
             utils.save_log(args.log_dir, runlog, quiet=args.quiet)
         return
 
-    R_bias_acc = runlog['results'][1][0]
-    bias_f1 = runlog['bias_test_f1']
-    if R_bias_acc < MIN_R_PERFOMANCE and arguments['train_attempts'] <= MAX_RETRIES:
-        print('Accuracy on region R too low (expected >= {}, got {})'.format(
-            MIN_R_PERFOMANCE, R_bias_acc))
-        arguments['train_attempts'] += 1
-        run_seed(arguments)
-        return
+    # TODO re-add checks
 
-    if bias_f1 < MIN_F1_SCORE and arguments['train_attempts'] <= MAX_RETRIES:
-        print('F1-score too low on biased model (expected >= {}, got {})'.format(
-            MIN_F1_SCORE, bias_f1))
-        arguments['train_attempts'] += 1
-        run_seed(arguments)
-        return
+    # R_bias_acc = runlog['results'][1][0]
+    # runlog['bias_test_lfr'] = R_bias_acc
+    # bias_f1 = runlog['bias_test_f1']
+
+    # if R_bias_acc < MIN_R_PERFOMANCE and arguments['train_attempts'] <= MAX_RETRIES:
+    #     print('Accuracy on region R too low (expected >= {}, got {})'.format(
+    #         MIN_R_PERFOMANCE, R_bias_acc))
+    #     arguments['train_attempts'] += 1
+    #     run_seed(arguments)
+    #     return
+    #
+    # if bias_f1 < MIN_F1_SCORE and arguments['train_attempts'] <= MAX_RETRIES:
+    #     print('F1-score too low on biased model (expected >= {}, got {})'.format(
+    #         MIN_F1_SCORE, bias_f1))
+    #     arguments['train_attempts'] += 1
+    #     run_seed(arguments)
+    #     return
 
     if args.test == 'budget_test':
         exps = {
@@ -211,7 +216,7 @@ def run_seed(arguments):
             'SHAP':ShapExplainer,
         }
         n_samples = 1 if args.toy else N_SAMPLES
-        explainers_budget_test(model_bias, exps, bias_words, train_df, n_samples, runlog)
+        explainers_budget_test(bias_model, exps, bias_words, train_df, n_samples, runlog)
         return
 
     if args.test ==  'boost_test':
@@ -292,7 +297,8 @@ def split_dataset(dataset_path, bias_length, runlog, quiet=False):
            bias_test_path,  \
            train_df,        \
            valid_df,        \
-           test_df
+           test_df,         \
+           bias_obj.bias_words
 
 
 def explainers_budget_test(
@@ -310,6 +316,19 @@ def explainers_budget_test(
     runlog['n_samples'] = n_samples
     bias_length = len(bias_words)
 
+    #TODO test and remove
+    print('Form of input:')
+    print(X_explain[0])
+
+    print('integrate:')
+    res = model_bias.explain(X_explain[0], method='integrate')
+    print(res)
+
+    print('simple:')
+    res = model_bias.explain(X_explain[0], method='simple')
+    print(res)
+    exit()
+
     # Handle interpretable models by adding their respective explainer
     if runlog['model_type'] == 'logistic':
         explainers['Ground Truth'] = LogisticExplainer
@@ -326,6 +345,7 @@ def explainers_budget_test(
             # Compute the average recall over `n_samples` instances
             avg_recall = 0
             for i in range(n_samples):
+
                 importance_pairs = explainer.explain(X_explain[i], budget)
                 top_feats = [str(feat) for feat, _ in importance_pairs]
                 importances = [float(imp) for _, imp in importance_pairs]

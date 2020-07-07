@@ -23,6 +23,7 @@ MODEL_ORDER = [
     'rf',
     'xgb',
     'mlp',
+    'roberta',
 ]
 
 # If None use all datasets found in logs
@@ -132,18 +133,20 @@ def main():
     handles, labels = axes[0,0].get_legend_handles_labels()
 
     if args.plot_type == 'bias':
-        print(handles[0])
-        print(handles[0].__dict__)
-        print(handles[0].patches[0])
-        print(handles[0].patches[0].__dict__)
+        pass
+        # print(handles[0])
+        # print(handles[0].__dict__)
+        # print(handles[0].patches[0])
+        # print(handles[0].patches[0].__dict__)
 
-        stained = matplotlib.patches.Patch(
-                facecolor=EXPLAINER_COLORS['Greedy'],
-        )
-        for i in stained.patches:
-            i.set_hatch('//')
-        handles.insert(1, stained)
-        labels.insert(1, r'$R_{stain}$')
+        # stained = matplotlib.patches.Patch(
+        #         facecolor=EXPLAINER_COLORS['Greedy'])
+        #
+        # for i in stained.patches:
+        #     i.set_hatch('//')
+        #
+        # handles.insert(1, stained)
+        # labels.insert(1, r'$R_{stain}$')
 
     if args.plot_type == 'budget':
         handles = handles[1:]
