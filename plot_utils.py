@@ -29,17 +29,22 @@ real_names = {
 
     # Explainers
     'Aggregate (All)'     : 'Agg. (All)',
-    'Unbiased'            : 'Original',
-    'Biased'              : 'Stained',
     'Aggregate (LIME x 3)': 'LIME x 3',
     'LIME (n=3)'          : 'LIME x 3',
     'LIME (n=3, reduced=False)'          : 'LIME x 3',
     'Aggregate (SHAP x 3)': 'SHAP x 3',
     'SHAP (n=3)'          : 'SHAP x 3',
+    'integrate'           : 'Integrated',
+    'simple'              : 'Simple',
+    'greedy'              : 'Greedy',
 
     # Tests
     'bias'                : 'Stain Verification',
     'budget'              : 'Budget vs. Recall',
+
+    # Legacy changes
+    'Unbiased'            : 'Original',
+    'Biased'              : 'Stained',
 }
 
 

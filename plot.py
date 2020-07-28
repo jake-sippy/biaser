@@ -19,10 +19,10 @@ import plot_utils
 # If None use all models found in logs
 MODEL_ORDER = [
     # 'logistic',
-    'dt',
-    'rf',
-    'xgb',
-    'mlp',
+    # 'dt',
+    # 'rf',
+    # 'xgb',
+    # 'mlp',
     'roberta',
 ]
 
@@ -46,7 +46,9 @@ EXPLAINER_ORDER = [
     # 'LIME x 3',
     # 'SHAP x 3',
     # 'Agg. (All)',
-    'Ground Truth',
+    'Simple',
+    'Integrated',
+    # 'Ground Truth',
 ]
 
 BIAS_LENGTH = 2                 # Default bias length to plot
@@ -66,6 +68,8 @@ EXPLAINER_COLORS = {
     'SHAP x 3'     : (0.173, 0.627, 0.173),
     'Agg. (All)'   : (0.839, 0.153, 0.157),
     'Ground Truth' : (0.580, 0.404, 0.741),
+    'Simple'       : (0.580, 0.404, 0.741),
+    'Integrated'   : (1.000, 0.250, 1.000),
 }
 
 # Plot types available (change names here and in main())
