@@ -49,7 +49,7 @@ class RobertaLarge:
             class_name_mapper[_model.vocab.get_index_to_token_vocabulary(_label_namespace).get(1)]
         ]
         # reset the tokenizer to remove separators
-        self.tokenizer = lambda s: [t.text.replace("Ġ", "").replace('ĉ', "") for t in _tokenizer.tokenize(s)][1:-1]
+        self.tokenizer = lambda s: [t.text.replace("Ġ", "").replace('Ċ', '').replace('ĉ', "") for t in _tokenizer.tokenize(s)][1:-1]
         self.explainer_lime = LimeTextExplainer(class_names=class_names, split_expression=self.tokenizer)
         self.explainer_integrate = IntegratedGradient(self.predictor)
         self.explainer_simple = SimpleGradient(self.predictor)
@@ -81,10 +81,9 @@ class RobertaLarge:
 
         tokens = self.tokenizer(sentence)
         if method == 'LIME':
-            return self.explain_lime(sentence)
+            return self.explain_lime(sentence)[:budget]
         elif method == 'greedy':
-            # explainer = self.explainer_greedy
-            raise NotImplementedError
+            return self.explain_greedy(sentence)[:budget]
         elif method == 'integrate':
             explainer = self.explainer_integrate
         elif method == 'simple':
@@ -120,7 +119,7 @@ class RobertaLarge:
         exp = self.explainer_lime.explain_instance(
             text_instance=sentence,
             classifier_fn=self.predict_proba,
-            num_features=num_features,
+            # num_features=num_features,
             num_samples=num_samples)
         ## NOT USING self.predict_proba because I need label idx that matches the max probability, not label.
         # predicted = np.argmax(self.predict_proba([sentence])[0])
@@ -140,7 +139,32 @@ class RobertaLarge:
         # NEW
         predicted = 1
         feats_importances = exp.as_list(label=predicted)
-        return feats_importances[:num_features]
+        return feats_importances
+
+
+    def explain_greedy(self, sentence):
+        UNKTOKEN = '<UNKWORD>'
+        tokens = self.tokenizer(sentence)
+        print(tokens)
+        baseline = self.predict_proba([sentence])[0][0]
+        print(baseline)
+
+        pairs = []
+        tokens_visited = []
+        for i, curr_token in enumerate(tokens):
+            if curr_token in tokens_visited:
+                continue
+            tokens_visited.append(curr_token)
+
+            new_tokens = [UNKTOKEN if t == curr_token else t for t in tokens]
+            new_sentence = ' '.join(new_tokens)
+            curr_out = self.predict_proba([new_sentence])[0][0]
+            diff = abs(baseline - curr_out)
+            pairs.append( (curr_token, baseline - curr_out) )
+
+        pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+        return pairs
+
 
     def _segment_with_tokens(self, text, token_weights):
         """Segment a string around the tokens created by a passed-in tokenizer"""

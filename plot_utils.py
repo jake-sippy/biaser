@@ -11,40 +11,50 @@ import matplotlib.pyplot as plt
 
 real_names = {
     # Models
-    'logistic'            : 'Logistic Regression',
-    'dt'                  : 'Decision Tree',
-    'rf'                  : 'Random Forest',
-    'mlp'                 : 'MLP',
-    'xgb'                 : 'XGBoost',
-    'roberta'             : 'RoBERTa',
+    'logistic'  : 'Logistic Regression',
+    'dt'        : 'Decision Tree',
+    'rf'        : 'Random Forest',
+    'mlp'       : 'MLP',
+    'xgb'       : 'XGBoost',
+    'roberta'   : 'RoBERTa',
+    'resnet'    : 'ResNet',
+    'resnet152' : 'ResNet-152',
+    'mnasnet'   : 'MnasNet',
 
     # Datasets
-    'newsgroups_atheism'  : 'Newsgroup (Atheism)',
-    'newsgroups_baseball' : 'Newsgroup (Baseball)',
-    'newsgroups_ibm'      : 'Newsgroup (IBM)',
-    'imdb'                : 'IMDb',
-    'amazon_cell'         : 'Amazon',
-    'amazon_home'         : 'Amazon (Home & Kitchen)',
-    'goodreads'           : 'Goodreads',
+    'newsgroups_atheism'     : 'Newsgroup (Atheism)',
+    'newsgroups_baseball'    : 'Newsgroup (Baseball)',
+    'newsgroups_ibm'         : 'Newsgroup (IBM)',
+    'imdb'                   : 'IMDb',
+    'amazon_cell'            : 'Amazon',
+    'amazon_home'            : 'Amazon (Home & Kitchen)',
+    'goodreads'              : 'Goodreads',
+
+    'cub200'                 : 'Warbler / Sparrow (old)',
+    'cub200_gull_wren'       : 'Gull / Wren',
+    'cub200_warbler_sparrow' : 'Warbler / Sparrow',
 
     # Explainers
     'Aggregate (All)'     : 'Agg. (All)',
     'Aggregate (LIME x 3)': 'LIME x 3',
     'LIME (n=3)'          : 'LIME x 3',
-    'LIME (n=3, reduced=False)'          : 'LIME x 3',
     'Aggregate (SHAP x 3)': 'SHAP x 3',
     'SHAP (n=3)'          : 'SHAP x 3',
     'integrate'           : 'Integrated',
     'simple'              : 'Simple',
     'greedy'              : 'Greedy',
+    'grad'                : 'Gradient',
+    'smooth'              : 'SmoothGrad',
+    'random'              : 'Random',
+    'GradCAM'             : 'Grad-CAM',
 
     # Tests
-    'bias'                : 'Stain Verification',
-    'budget'              : 'Budget vs. Recall',
+    'bias'   : 'Stain Verification',
+    'budget' : 'Budget vs. Recall',
 
     # Legacy changes
-    'Unbiased'            : 'Original',
-    'Biased'              : 'Stained',
+    'Unbiased' : 'Original',
+    'Biased'   : 'Stained',
 }
 
 
@@ -52,15 +62,18 @@ real_names = {
 def load_log_data(log_directory, plot_type, logger):
     logger.info('Loading logs from: {}'.format(log_directory))
     rows = []
+    image_data = False
     for root, _, files in os.walk(log_directory):
         for f in files:
-            logger.debug('Parsing: {}'.format(f))
+            logger.debug('parsing: {}'.format(f))
             path = os.path.join(root, f)
             with open(path, 'r') as f:
                 try:
                     data = json.load(f)
+                    if not image_data and 'intersect_percentage_segment' in data:
+                        image_data = True
                 except Exception as e:
-                    logger.error('Failed to read file ' + path)
+                    logger.error('Eailed to read file ' + path)
                     raise e
 
                 if plot_type == 'bias':
@@ -90,6 +103,13 @@ def load_log_data(log_directory, plot_type, logger):
             'Budget',
             'Recall',
         ]
+        if image_data:
+            columns.extend([
+                'Intersect % (circle r=5)',
+                'Intersect % (circle r=10)',
+                'Intersect % (circle r=15)',
+                'Intersect %',
+            ])
         df = pd.DataFrame(columns=columns, data=rows)
     return df
 
@@ -120,7 +140,23 @@ def _log_to_df_budget(log_data):
     if exp in real_names:
         log_data['explainer'] = real_names[exp]
 
-    row = [
+    # Image data ! Special case
+    if 'intersect_percentage_segment' in log_data:
+        return [
+            log_data['seed'],
+            log_data['dataset'],
+            log_data['model_type'],
+            log_data['bias_len'],
+            log_data['explainer'],
+            log_data['budget'],
+            log_data['recall'],
+            log_data['intersect_percentage_circle_small'],
+            log_data['intersect_percentage_circle_medium'],
+            log_data['intersect_percentage_circle_large'],
+            log_data['intersect_percentage_segment'],
+        ]
+    else:
+        return [
             log_data['seed'],
             log_data['dataset'],
             log_data['model_type'],
@@ -128,8 +164,7 @@ def _log_to_df_budget(log_data):
             log_data['explainer'],
             log_data['budget'],
             log_data['recall']
-    ]
-    return row
+        ]
 
 
 def get_data_ordered(df, dataset_order, model_order, explainer_order, logger):

@@ -33,27 +33,27 @@ def load_dataset(data_path, train_size, runlog, quiet=False):
             test_size=1-train_size)
 
 
-def oversample(train_df, quiet=False):
-    print('\tORIG_BALANCE:')
+def oversample(train_df, r_factor=1.0, quiet=False):
+    # print('\tORIG_BALANCE:')
     counts = train_df['biased'].value_counts()
     not_R_count = counts[0]
     R_count = counts[1]
-    print('\t\t R: {}'.format(R_count))
-    print('\t\t~R: {}'.format(not_R_count))
+    # print('\t\t R: {}'.format(R_count))
+    # print('\t\t~R: {}'.format(not_R_count))
 
-    diff = not_R_count - R_count
+    diff = int( (not_R_count - R_count) * r_factor )
     if diff > 0:
-        new_examples = train_df[train_df['biased']].sample(diff * 2, replace=True)
+        new_examples = train_df[train_df['biased']].sample(diff, replace=True)
         train_df = train_df.append(new_examples)
     else:
         assert False
 
-    print('\tNEW_BALANCE:')
+    # print('\tNEW_BALANCE:')
     counts = train_df['biased'].value_counts()
     not_R_count = counts[0]
     R_count = counts[1]
-    print('\t\t R: {}'.format(R_count))
-    print('\t\t~R: {}'.format(not_R_count))
+    # print('\t\t R: {}'.format(R_count))
+    # print('\t\t~R: {}'.format(not_R_count))
 
     return train_df
 
@@ -163,39 +163,46 @@ def evaluate_models(model_orig, model_bias, test_df, runlog, quiet=False):
     bias_nr_acc = accuracy_score(y_nr, pred_nr)
 
     # Get overall accuracy and f1-score
-
-
     if not quiet: print('\t               R       !R')
-    if not quiet: print('\torig model | {0:.3f} | {1:.3f}'.format(orig_r_acc, orig_nr_acc))
-    if not quiet: print('\tbias model | {0:.3f} | {1:.3f}'.format(bias_r_acc, bias_nr_acc))
+    if not quiet: print('\torig model | {:.3f} | {:.3f}'.format(orig_r_acc, orig_nr_acc))
+    if not quiet: print('\tbias model | {:.3f} | {:.3f}'.format(bias_r_acc, bias_nr_acc))
     runlog['results'] = [[orig_r_acc, orig_nr_acc], [bias_r_acc, bias_nr_acc]]
 
 
 def save_log(log_dir, runlog, quiet=False):
+    # for key, val in runlog.items():
+    #     print('{} : {}'.format(key, val))
+    #     print('{} : {}'.format(type(key), type(val)))
+    # exit()
 
     if runlog['test_name'] == 'bias_test':
+        directory = os.path.join(
+                log_dir,
+                runlog['test_name'],
+                runlog['dataset'],
+                runlog['model_type'],
+        )
         filename = '{:d}_{:03d}.json'.format(
-                # runlog['explainer'],
                 runlog['bias_len'],
                 runlog['seed'])
-                # runlog['budget'],
-                # runlog['example_id'])
 
     if runlog['test_name'] == 'budget_test':
-        filename = '{:s}_{:d}_{:03d}_{:02d}_{:03d}.json'.format(
+        directory = os.path.join(
+                log_dir,
+                runlog['test_name'],
+                runlog['dataset'],
+                runlog['model_type'],
                 runlog['explainer'],
-                runlog['bias_len'],
-                runlog['seed'],
-                runlog['budget'],
-                runlog['example_id'])
+                'seed_{:02d}'.format(runlog['seed']),
+                'bias_len_{:1d}'.format(runlog['bias_len']),
+                'budget_{:03d}'.format(runlog['budget']),
+        )
+        filename = '{:03d}.json'.format(runlog['example_id'])
 
-    directory = os.path.join(
-            log_dir,
-            runlog['test_name'],
-            runlog['dataset'],
-            runlog['model_type'])
 
     if runlog['toy']:
+        #TODO
+        assert False, 'rewrite toy to fit directory naming pattern'
         # Save in 'toy' sub-directory
         directory = os.path.join(
                 log_dir, 'toy',
@@ -209,5 +216,5 @@ def save_log(log_dir, runlog, quiet=False):
     log_path = os.path.join(directory, filename)
     if not quiet: print('Writing log to: {}'.format(log_path))
     with open(log_path, 'w') as f:
-        json.dump(runlog, f)
+        json.dump(runlog, f, indent=4)
 

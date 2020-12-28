@@ -33,6 +33,10 @@ def load_goodreads(path):
     dataset = dataset[dataset['rating'].isin(keep_ratings)]
     dataset['rating'] = dataset['rating'].map( {1:0, 2:0, 4:1, 5:1} ).astype(int)
 
+    # drop empty string reviews
+    dataset.replace('', np.nan, inplace=True)
+    dataset.dropna(axis=0, inplace=True)
+
     # write file
     dataset.to_csv(filename, index=False, header=False,
             columns=['review_text', 'rating'])
@@ -200,9 +204,9 @@ if __name__ == '__main__':
 
     # Load datasets
     print('Downloading datasets')
-    load_imdb(directory)
+    # load_imdb(directory)
     # load_amazon_cell(directory)
-    # load_goodreads(directory)
+    load_goodreads(directory)
 
     # Old Datasets
     # load_amazon_home(directory)

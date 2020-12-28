@@ -16,7 +16,9 @@ import torch
 import utils
 import biases
 from models import pipelines
-from bertmodel import RobertaLarge
+from allennlp.data.tokenizers import PretrainedTransformerTokenizer
+from bertmodel import RobertaLarge, TRANSFORMER_WORDPIECE_LIMIT
+
 from explainers import (
     GreedyExplainer,
     LimeExplainer,
@@ -52,6 +54,8 @@ BIAS_LENS = range(2, 3)         # Range of bias lengths to run
 # BERT specific changes
 MODEL_TYPE = 'roberta'
 TMP_DIR = os.path.join('/tmp', 'bert_data')
+MODEL_FILENAME = 'model.tar.gz'
+SERIAL_DIR = 'save'
 
  # Path to toy dataset for testing this scripts functionality
 TOY_DATASET = 'datasets/imdb.csv'
@@ -122,10 +126,7 @@ def run_seed(arguments):
     runlog['model_type'] = model_type
     runlog['dataset']    = dataset_name
     runlog['bias_len']   = bias_length
-    # runlog['min_occur']  = MIN_OCCURANCE
-    # runlog['max_occur']  = MAX_OCCURANCE
 
-    SERIAL_DIR = 'save'
     ORIG_NAME = 'orig_model'
     BIAS_NAME = 'bias_model'
     PARAM_FILE = 'roberta.jsonnet'
@@ -142,62 +143,53 @@ def run_seed(arguments):
     bias_words = split_dataset(dataset, bias_length, runlog)
 
     seed = str(seed)
-    orig_model_path = os.path.join(SERIAL_DIR, ORIG_NAME, dataset_name, seed)
-    bias_model_path = os.path.join(SERIAL_DIR, BIAS_NAME, dataset_name, seed)
+    orig_model_path = os.path.join(args.serial_dir, ORIG_NAME, dataset_name, seed)
+    bias_model_path = os.path.join(args.serial_dir, BIAS_NAME, dataset_name, seed)
 
-    if not args.recover:
-        if os.path.exists(orig_model_path):
-            shutil.rmtree(orig_model_path)
-        if os.path.exists(bias_model_path):
-            shutil.rmtree(bias_model_path)
-
-    # TODO re-add orig model
-
-    # orig_overrides = json.dumps({
-    #     'train_data_path'      : orig_train_path,
-    #     'validation_data_path' : orig_valid_path,
-    #     'test_data_path'       : orig_test_path,
-    # })
-    #
-    # train_model_from_file(
-    #     parameter_filename=PARAM_FILE,
-    #     serialization_dir=orig_model_path,
-    #     overrides=orig_overrides,
-    #     recover=args.recover,
-    # )
-
-    bias_overrides = json.dumps({
-        'train_data_path'      : bias_train_path,
-        'validation_data_path' : bias_valid_path,
-        'test_data_path'       : bias_test_path,
-    })
-
-    train_model_from_file(
-        parameter_filename=PARAM_FILE,
-        serialization_dir=bias_model_path,
-        overrides=bias_overrides,
-        recover=args.recover,
-    )
-
-
-    # orig_model = RobertaLarge(model_path=orig_model_path)
-    bias_model = RobertaLarge(
-            model_path=bias_model_path,
-            cuda_device=int(seed-1))
-
-    # Evaluate both models on biased region R and ~R
-    # utils.evaluate_models(orig_model, bias_model, test_df, runlog, quiet=args.quiet)
 
     if args.test == 'bias_test':
+        orig_overrides = json.dumps({
+            'train_data_path'      : orig_train_path,
+            'validation_data_path' : orig_valid_path,
+            'test_data_path'       : orig_test_path,
+            'trainer'              : {'cuda_device' : args.device},
+        })
+
+        bias_overrides = json.dumps({
+            'train_data_path'      : bias_train_path,
+            'validation_data_path' : bias_valid_path,
+            'test_data_path'       : bias_test_path,
+            'trainer'              : {'cuda_device' : args.device},
+        })
+
+        train_model_from_file(
+            parameter_filename=PARAM_FILE,
+            serialization_dir=bias_model_path,
+            overrides=bias_overrides,
+            recover=args.recover,
+            force=args.force
+        )
+
+        bias_model = RobertaLarge(model_path=bias_model_path,
+                cuda_device=args.device)
+
+        train_model_from_file(
+            parameter_filename=PARAM_FILE,
+            serialization_dir=orig_model_path,
+            overrides=orig_overrides,
+            recover=args.recover,
+            force=args.force
+        )
+        orig_model = RobertaLarge(model_path=orig_model_path,
+            cuda_device=args.device)
+        utils.evaluate_models(orig_model, bias_model, test_df, runlog, quiet=args.quiet)
+
+        R_bias_acc = runlog['results'][1][0]
+        runlog['bias_test_lfr'] = R_bias_acc
+        bias_f1 = runlog['bias_test_f1']
         if not args.no_log:
             utils.save_log(args.log_dir, runlog, quiet=args.quiet)
         return
-
-    # TODO re-add checks
-
-    # R_bias_acc = runlog['results'][1][0]
-    # runlog['bias_test_lfr'] = R_bias_acc
-    # bias_f1 = runlog['bias_test_f1']
 
     # if R_bias_acc < MIN_R_PERFOMANCE and arguments['train_attempts'] <= MAX_RETRIES:
     #     print('Accuracy on region R too low (expected >= {}, got {})'.format(
@@ -214,15 +206,21 @@ def run_seed(arguments):
     #     return
 
     if args.test == 'budget_test':
-        exps = {
-            # 'Random': RandomExplainer,
-            'Greedy': GreedyExplainer,
-            'LIME': LimeExplainer,
-            'SHAP':ShapExplainer,
-        }
+        # exps = {
+        #     # 'Random': RandomExplainer,
+        #     'Greedy': GreedyExplainer,
+        #     'LIME': LimeExplainer,
+        #     'SHAP':ShapExplainer,
+        # }
 
-        exps = ['LIME']  #, 'integrate', 'simple']
-        # exps = ['integrate']
+        best_model = os.path.join(bias_model_path, MODEL_FILENAME)
+        bias_model = RobertaLarge(
+                model_path=best_model,
+                cuda_device=args.device)
+        if args.device >= 0:
+            exps = ['LIME', 'greedy']
+        else:
+            exps = ['integrate', 'simple']
         n_samples = 1 if args.toy else N_SAMPLES
         explainers_budget_test(bias_model, exps, bias_words, train_df, n_samples, runlog)
         return
@@ -245,6 +243,8 @@ def split_dataset(dataset_path, bias_length, runlog, quiet=False):
     with open(dataset_path, 'r') as f:
         data = pd.read_csv(dataset_path, header=None, names=['reviews', 'labels'])
 
+    data.dropna(axis=0, inplace=True)
+
     train_val_data, test_data = train_test_split(data, test_size=0.2)
     train_data, val_data = train_test_split(train_val_data, train_size=0.5)
 
@@ -254,6 +254,10 @@ def split_dataset(dataset_path, bias_length, runlog, quiet=False):
     reviews_train = train_data['reviews'].values
     labels_train= train_data['labels'].values
 
+    _tokenizer = PretrainedTransformerTokenizer(model_name="roberta-base",
+                max_length=TRANSFORMER_WORDPIECE_LIMIT)
+    tokenizer = lambda s: [t.text.replace("Ġ", "").replace('ĉ', "") for t in _tokenizer.tokenize(s)][1:-1]
+
     bias_obj = biases.ComplexBias(
             reviews_train,
             labels_train,
@@ -261,6 +265,7 @@ def split_dataset(dataset_path, bias_length, runlog, quiet=False):
             BIAS_MIN_DF,
             BIAS_MAX_DF,
             runlog,
+            tokenizer=tokenizer,
             quiet=quiet)
 
     # Build dataframes with orig and bias labels
@@ -382,7 +387,6 @@ def explainers_budget_test(
 
                 print('recall = ' + str(recall / bias_length))
 
-
                 print('saving')
                 if not args.no_log:
                     utils.save_log(args.log_dir, runlog, quiet=args.quiet)
@@ -443,6 +447,22 @@ def setup_args():
         '--recover',
         action='store_true',
         help='Try to recover from a trained model')
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force a new trained model')
+    parser.add_argument(
+        '--device',
+        type=int,
+        default=-1,
+        metavar='DEVICE',
+        help='CUDA device to use (default = -1)')
+    parser.add_argument(
+        '--serial-dir',
+        type=str,
+        default=SERIAL_DIR,
+        metavar='SERIAL',
+        help='Directory to serialize trained models to')
 
     args = parser.parse_args()
 
