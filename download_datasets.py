@@ -204,8 +204,8 @@ if __name__ == '__main__':
 
     # Load datasets
     print('Downloading datasets')
-    # load_imdb(directory)
-    # load_amazon_cell(directory)
+    load_imdb(directory)
+    load_amazon_cell(directory)
     load_goodreads(directory)
 
     # Old Datasets
